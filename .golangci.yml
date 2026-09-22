@@ -1,0 +1,38 @@
+# What the compiler will not catch on its own.
+#
+# The set is chosen rather than inherited wholesale: a linter that fires on every line is a linter
+# everybody turns off.
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # an ignored error is how a failed write becomes a successful request
+    - govet
+    - staticcheck
+    - revive
+    - gosec
+    - ineffassign
+    - unconvert
+    - unparam
+    - bodyclose     # matters once the Typesense and gRPC adapters land
+    - contextcheck  # every outbound call carries the request's context, or the deadline is lost
+    - errorlint     # errors.As/Is rather than type assertions, which is what KindOf depends on
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true   # doc comments are required by review, not by a linter counting them
+
+  exclusions:
+    rules:
+      # Table-driven tests build documents inline; a helper per field would obscure the table.
+      - path: _test\.go
+        linters: [gosec, unparam]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

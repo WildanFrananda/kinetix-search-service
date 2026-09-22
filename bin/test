@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# Run the suite, with coverage that is actually true.
+#
+# The tests live in tests/ rather than beside the code they exercise, which is this estate's rule.
+# Go's default coverage reporting does not expect that: `go test -cover ./...` measures each
+# package against its *own* test files, so every package under internal/ reports
+#
+#     internal/search    coverage: 0.0% of statements
+#
+# which is false and looks damning. `-coverpkg=./internal/...` tells the tool which code the
+# coverage is about, and the same run then reports 90.9% for the same package.
+#
+# This script exists so nobody has to remember that. Use it, and use it in CI.
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./tests/... "$@"
+
+echo
+go tool cover -func=coverage.out | tail -1

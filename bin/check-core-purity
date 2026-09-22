@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+# The core imports the standard library and nothing else.
+#
+# This is the one rule the hexagon rests on, and a rule nobody can check is a rule that decays.
+# `internal/search` holds the domain types and the interfaces the use cases need; the day a
+# Typesense type or a pgx type appears in one of those signatures, the layering is gone and the
+# only sign would be a slow drift nobody reviews.
+#
+# Run from CI and before a release. It exits non-zero and names the offending import.
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+MODULE="$(go list -m)"
+CORE="$MODULE/internal/search"
+
+# go list resolves the full transitive import set, so an indirect dependency is caught too — a
+# package that imports a package that imports Typesense fails here just as loudly.
+# A package is external when the FIRST element of its path contains a dot — that is the Go
+# convention for a module path (github.com/…, go.yaml.in/…). Matching a dot anywhere would also
+# flag the standard library's own vendored copies (vendor/golang.org/x/net/…) and versioned
+# internal packages (crypto/internal/entropy/v1.0.0), which are stdlib and perfectly allowed.
+offenders="$(
+  go list -deps "$CORE" \
+    | grep -v "^$MODULE" \
+    | awk -F/ '$1 ~ /\./' \
+    || true
+)"
+
+if [ -n "$offenders" ]; then
+  echo "internal/search must import only the standard library, but it reaches:"
+  echo "$offenders" | sed 's/^/  /'
+  echo
+  echo "Move whatever needs that dependency into an adapter, and give the core an interface."
+  exit 1
+fi
+
+echo "core is clean: $CORE imports only the standard library"

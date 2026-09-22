@@ -1,0 +1,61 @@
+package querying
+
+import (
+	"context"
+	"time"
+
+	"github.com/WildanFrananda/kinetix-search-service/internal/search"
+)
+
+type Finder[D any] struct {
+	collection search.Collection
+	searcher   search.Searcher[D]
+	checkpoint search.Checkpoint
+	clock      search.Clock
+	staleAfter time.Duration
+}
+
+func NewFinder[D any](
+	collection search.Collection,
+	searcher search.Searcher[D],
+	checkpoint search.Checkpoint,
+	clock search.Clock,
+	staleAfter time.Duration,
+) *Finder[D] {
+	return &Finder[D]{
+		collection: collection,
+		searcher:   searcher,
+		checkpoint: checkpoint,
+		clock:      clock,
+		staleAfter: staleAfter,
+	}
+}
+
+func (f *Finder[D]) Find(ctx context.Context, q search.Query) (search.Results[D], error) {
+	if f.collection == search.Orders && q.OnBehalfOf.IsZero() {
+		return search.Results[D]{}, search.Errf(
+			search.KindMalformedQuery,
+			"querying.Find",
+			nil,
+			"orders may only be searched on behalf of a principal",
+		)
+	}
+
+	results, err := f.searcher.Search(ctx, q)
+	if err != nil {
+		return search.Results[D]{}, err
+	}
+
+	cur, err := f.checkpoint.Load(ctx, f.collection)
+	if err != nil {
+		return search.Results[D]{}, err
+	}
+
+	age := f.clock.Now().Sub(cur.UpdatedThrough)
+	results.Freshness = search.Freshness{
+		IndexedThrough: cur.UpdatedThrough,
+		Age:            age,
+		Stale:          age > f.staleAfter,
+	}
+	return results, nil
+}

@@ -1,0 +1,21 @@
+# Compiled binaries. cmd/searchd and cmd/reindex build to names matching their directories.
+/searchd
+/reindex
+/bin/searchd
+/bin/reindex
+
+# The contract, fetched by bin/sync-contracts at a pinned tag and commit.
+#
+# Ignored on purpose, and it is the rule rather than an oversight: kinetix-contracts is the only
+# source of a .proto in this estate. `git ls-files '*.proto'` must stay empty here, as it does in
+# every other service.
+/contracts/
+
+# Generated gRPC stubs live beside the vendored proto and are never committed.
+/internal/contractgen/
+
+coverage.out
+coverage.html
+
+.env
+.DS_Store
