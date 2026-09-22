@@ -1,0 +1,8 @@
+.git
+.github
+contracts
+internal/contractgen
+coverage.out
+tests
+PLAN.md
+CLAUDE.md

@@ -24,13 +24,15 @@ type ProductDoc struct {
 type MerchantDoc struct {
 	ID          MerchantID
 	DisplayName string
+	Status      string
+	MaySell     bool
 	Categories  []string
 	UpdatedAt   time.Time
 }
 
 type OrderDoc struct {
 	ID         OrderID
-	Buyer      MerchantID
+	Buyer      BuyerID
 	MerchantID MerchantID
 	Number     string
 	Status     string

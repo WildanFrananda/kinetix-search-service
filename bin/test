@@ -16,7 +16,11 @@ set -eu
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE"
 
-go test -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./tests/... "$@"
+# internal/contractgen is protoc's output. Counting it as uncovered measures how much generated
+# code has tests, which is not a number anybody should act on.
+COVERED="$(go list ./internal/... | grep -v /contractgen | paste -sd, -)"
+
+go test -count=1 -coverpkg="$COVERED" -coverprofile=coverage.out ./tests/... "$@"
 
 echo
 go tool cover -func=coverage.out | tail -1

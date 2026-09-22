@@ -1,0 +1,109 @@
+#!/usr/bin/env sh
+# Fetches the wire contracts this service speaks, and generates the Go stubs from them.
+#
+# buf generates Go, but the release workflow publishes only npm, pypi, rubygems and packagist —
+# there is no Go registry job and gen/go is not committed anywhere. So Go follows the pattern
+# Rust, Elixir and Scala already use here: fetch the .proto at a pinned tag and generate locally.
+#
+# Pinned to a commit as well as a tag. A tag can be moved, and a moved tag would silently change
+# what this service speaks; the tag is what a reader looks up, the commit is what is verified.
+#
+# `contracts/` and the generated output are both gitignored, so `git ls-files '*.proto'` stays
+# empty in this repository as it does in every other service.
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
+TAG="v1.0.19"
+COMMIT="9008e09bd71a6f2181f2dbc5f6b0f5a1f6a982ae"
+DEST="$HERE/contracts"
+GENDIR="$HERE/internal/contractgen"
+
+need() { command -v "$1" >/dev/null 2>&1 || { echo "$1 is not installed"; exit 1; }; }
+need git
+need protoc
+need protoc-gen-go
+need protoc-gen-go-grpc
+
+if [ -d "$DEST/.git" ]; then
+  got="$(git -C "$DEST" rev-parse HEAD)"
+  # The generated file, not the directory: protoc creates the directory before it runs and
+  # leaves it behind empty when it fails, so "the folder exists" reports a successful sync that
+  # produced nothing.
+  if [ "$got" = "$COMMIT" ] && [ -f "$GENDIR/catalog/v1/catalog.pb.go" ] && [ -f "$GENDIR/search/v1/search.pb.go" ]; then
+    echo "contracts already at $TAG ($COMMIT)"
+    exit 0
+  fi
+  rm -rf "$DEST"
+fi
+
+git clone --depth 1 --branch "$TAG" --quiet "$REPO" "$DEST"
+
+got="$(git -C "$DEST" rev-parse HEAD)"
+if [ "$got" != "$COMMIT" ]; then
+  echo "$TAG resolves to $got, but this service is pinned to $COMMIT"
+  echo "either the tag was moved or the pin is stale; neither should be worked around here"
+  rm -rf "$DEST"
+  exit 1
+fi
+
+# Only what this service speaks.
+#
+# The contract repository carries twelve packages. Search pulls products from catalog and asks
+# identity who somebody is; it has no business with payment, pricing or the fleet. Narrowing the
+# generation means reaching for one of those is a compile error rather than a review comment.
+SPOKEN="common/v1/common.proto catalog/v1/catalog.proto search/v1/search.proto identity/v1/identity.proto order/v1/order.proto"
+
+for path in $SPOKEN; do
+  test -f "$DEST/proto/$path" || {
+    echo "$TAG has no proto/$path"
+    rm -rf "$DEST"
+    exit 1
+  }
+done
+
+rm -rf "$GENDIR"
+mkdir -p "$GENDIR"
+
+# The .proto files carry no `go_package`. The contract repository injects it through buf's
+# managed mode, which plain protoc does not do — so each file is mapped explicitly here. Getting
+# this wrong produces stubs whose import paths do not exist, which fails at compile rather than
+# silently, but is confusing enough to be worth naming.
+MODULE="github.com/WildanFrananda/kinetix-search-service/internal/contractgen"
+
+# The well-known types (google/protobuf/timestamp.proto and friends). protoc from Homebrew
+# resolves them from inside the binary, so this script was silent about them and worked on a
+# laptop. Debian's protobuf-compiler is 3.21.12, which does not: it reads them from
+# /usr/include, shipped by libprotobuf-dev. The Docker build failed on exactly that with
+# "google/protobuf/timestamp.proto: File not found" while nothing was wrong with the contract.
+#
+# So: add the include directory when one exists, and say nothing when protoc already has them.
+WKT=""
+for dir in /usr/include /usr/local/include /opt/homebrew/include; do
+  if [ -f "$dir/google/protobuf/timestamp.proto" ]; then
+    WKT="--proto_path=$dir"
+    break
+  fi
+done
+
+
+# shellcheck disable=SC2086  # SPOKEN is a deliberate word list, WKT is one flag or nothing
+protoc \
+  --proto_path="$DEST/proto" \
+  $WKT \
+  --go_out="$GENDIR" --go_opt=paths=source_relative \
+  --go_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
+  --go_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \
+  --go_opt=Msearch/v1/search.proto="$MODULE/search/v1" \
+  --go_opt=Midentity/v1/identity.proto="$MODULE/identity/v1" \
+  --go_opt=Morder/v1/order.proto="$MODULE/order/v1" \
+  --go-grpc_out="$GENDIR" --go-grpc_opt=paths=source_relative \
+  --go-grpc_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
+  --go-grpc_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \
+  --go-grpc_opt=Msearch/v1/search.proto="$MODULE/search/v1" \
+  --go-grpc_opt=Midentity/v1/identity.proto="$MODULE/identity/v1" \
+  --go-grpc_opt=Morder/v1/order.proto="$MODULE/order/v1" \
+  $SPOKEN
+
+echo "contracts synced at $TAG ($COMMIT); generated:"
+find "$GENDIR" -name '*.go' | sed "s|$HERE/||" | sed 's/^/  /'

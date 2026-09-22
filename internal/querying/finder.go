@@ -59,3 +59,20 @@ func (f *Finder[D]) Find(ctx context.Context, q search.Query) (search.Results[D]
 	}
 	return results, nil
 }
+
+func (f *Finder[D]) Suggest(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if f.collection == search.Orders {
+		return nil, search.Errf(
+			search.KindMalformedQuery,
+			"querying.Suggest",
+			nil,
+			"orders are private and are not suggested",
+		)
+	}
+
+	if limit <= 0 || limit > search.MaxPageSize {
+		limit = 10
+	}
+
+	return f.searcher.Suggest(ctx, prefix, limit)
+}

@@ -41,7 +41,7 @@ func FacetFieldsFor(collection search.Collection) string {
 	case search.Products:
 		return "categories,merchant_id,currency"
 	case search.Merchants:
-		return "categories"
+		return "categories,status,may_sell"
 	case search.Orders:
 		return "status"
 	default:
@@ -71,6 +71,8 @@ func merchantSchema(gen search.Generation) *api.CollectionSchema {
 		Fields: []api.Field{
 			{Name: "id", Type: "string"},
 			{Name: "display_name", Type: "string"},
+			{Name: "status", Type: "string", Facet: ptr(true)},
+			{Name: "may_sell", Type: "bool", Facet: ptr(true)},
 			{Name: "categories", Type: "string[]", Facet: ptr(true), Optional: ptr(true)},
 			{Name: "updated_at", Type: "int64", Sort: ptr(true)},
 		},

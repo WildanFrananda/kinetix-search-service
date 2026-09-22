@@ -24,7 +24,11 @@ No client ever writes to search.
 
 ```
 cmd/searchd/            the service. composition root.
-cmd/reindex/            one-shot full reindex. its own binary.
+cmd/syncd/              the incremental sync loop over all three collections.
+cmd/reindex/            one-shot full reindex, named: reindex <products|merchants|orders|all>.
+cmd/migrate/            one-shot migrator. the schema is embedded, not mounted.
+internal/migrations/    the .sql goose files, embedded by cmd/migrate.
+internal/mesh/          mTLS credentials shared by the three gRPC clients.
 internal/search/        THE CORE. imports the standard library and nothing else.
 internal/querying/      use case: Finder[D]
 internal/indexing/      use cases: Syncer[D], Reindexer[D]
@@ -149,12 +153,63 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
   across the whole engine and runs as a separate process, which places no obligation on this
   estate. Pin **`typesense-go/v3`** — `v4` is an alpha.
 
-## What is not built yet
+## Running, and what still is not built
 
-Everything from step 2 onward in `PLAN.md`: the Typesense adapter, the Postgres adapter, the three
-gRPC source clients, the HTTP and gRPC edges, the composition roots, `bin/sync-contracts`, the
-index mapping, CI, the Dockerfile and the compose entries.
+The Dockerfile, CI (GitHub and the paired GitLab pipeline) and the compose entries all landed on
+2026-09-22. `kinetix-search-migrate`, `kinetix-search-service` and `kinetix-search-sync` are in
+`compose.yaml`; `kinetix-search-reindex` is in the `tools` profile so `docker compose up` never
+starts it. Elasticsearch is gone from the estate in the same change.
 
-Four contract changes are owed before this service can index anything real: a new `catalog/v1`
-(and catalog's first gRPC server), a new `search/v1`, and one new RPC each on `identity/v1` and
-`order/v1`.
+One image carries all four binaries on purpose: they are the same code against the same contracts,
+and a separate image for each is one more thing that can be a version behind the one serving
+queries.
+
+A fresh volume needs one bootstrap: `/health/ready` answers 503 with `index_unavailable` until a
+generation has been promoted, so `docker compose run --rm kinetix-search-reindex all` is what makes
+the container healthy the first time. That is the readiness check doing its job — a search service
+that calls itself ready with no index answers every query "no products".
+
+Two traps the image found, both invisible on a laptop:
+
+- **Debian's protoc is 3.21.12 and does not bundle the well-known types.** Homebrew's does, so
+  `bin/sync-contracts` worked here and failed in the image with
+  `google/protobuf/timestamp.proto: File not found`, which reads like a broken contract. The script
+  now adds `/usr/include` to the proto path when the files are there, and the image installs
+  `libprotobuf-dev` to put them there.
+- **Typesense will not create its `--data-dir`.** The compose entry mounts `typesense_data:/data`,
+  and without it the container exits rather than starting empty.
+
+Still not built: the storefront has no gateway route to `/api/v1/products/search` — the HTTP edge
+is reachable from inside the mesh and from nowhere else — and production carries no image digest
+for this service yet, so `docker compose config` refuses to render prod until the first
+`build-and-push` fills `deploy/prod/versions.env`.
+
+All four contract changes are published: `catalog/v1` with `ChangedSince` (and catalog's first gRPC
+server), `search/v1`, `identity.v1.MerchantsChangedSince` and `order.v1.OrdersChangedSince`, pinned
+here at **v1.0.19**.
+
+## Three sources, two of which cannot count
+
+`search.Source[D]` is the walk. Counting is a **separate** interface, `search.Counter`, because only
+catalog serves a total:
+
+- **catalog** implements both. A reindex of products is checked against catalog's own count — a walk
+  that ends early is caught.
+- **identity** and **order** implement `Source` only. A reindex of those collections is checked
+  against what the walk sent, which catches an engine that dropped documents but not a source that
+  stopped short. The log line says which check ran (`counted_against`), so a weaker guarantee is
+  never mistaken for the strong one.
+
+The alternative was to have those clients return a count they had invented, which is the estate's
+house failure mode wearing a number.
+
+Two more things are deliberate:
+
+- **An order with no buyer is refused, not indexed.** Privacy here is a filter on the buyer, so a
+  record with no buyer would sit in the index reachable by text alone. An order with no *merchant*
+  is kept: orders placed before order recorded its seller carry none, and the buyer can still find
+  their own order. Unknown stays unknown rather than becoming an id nobody owns.
+- **A merchant that may not sell is still indexed**, carrying `status` and `may_sell`. Deciding
+  which shops a customer may find is this service's job, not identity's; identity reports standing
+  and search filters on it. `removed_principal_ids` is for a merchant that ceases to exist, and
+  identity has no such path today, so that list is honestly always empty.

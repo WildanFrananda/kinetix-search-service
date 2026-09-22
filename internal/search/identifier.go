@@ -19,7 +19,8 @@ func (p ProductID) IsZero() bool {
 }
 
 func (p ProductID) set(s string) ProductID {
-	p.v = s; return p
+	p.v = s
+	return p
 }
 
 type MerchantID struct {
@@ -39,7 +40,8 @@ func (m MerchantID) IsZero() bool {
 }
 
 func (m MerchantID) set(s string) MerchantID {
-	m.v = s; return m
+	m.v = s
+	return m
 }
 
 type OrderID struct {
@@ -58,7 +60,29 @@ func (o OrderID) IsZero() bool {
 }
 
 func (o OrderID) set(s string) OrderID {
-	o.v = s; return o
+	o.v = s
+	return o
+}
+
+type BuyerID struct {
+	v string
+}
+
+func NewBuyerID(raw string) (BuyerID, error) {
+	return newID[BuyerID](raw, "search.NewBuyerID")
+}
+
+func (b BuyerID) String() string {
+	return b.v
+}
+
+func (b BuyerID) IsZero() bool {
+	return b.v == ""
+}
+
+func (b BuyerID) set(s string) BuyerID {
+	b.v = s
+	return b
 }
 
 type identifier[T any] interface {

@@ -35,12 +35,12 @@ func (s *Searcher[D]) Search(ctx context.Context, q search.Query) (search.Result
 	}
 
 	params := &api.SearchCollectionParams{
-		Q:              &text,
-		QueryBy:        &fields,
-		QueryByWeights: &weights,
-		SortBy:         ptr(SortFor(s.collection, q.Ranking)),
-		Page:           &page,
-		PerPage:        &perPage,
+		Q:                    &text,
+		QueryBy:              &fields,
+		QueryByWeights:       &weights,
+		SortBy:               ptr(SortFor(s.collection, q.Ranking)),
+		Page:                 &page,
+		PerPage:              &perPage,
 		PrioritizeExactMatch: ptr(true),
 	}
 

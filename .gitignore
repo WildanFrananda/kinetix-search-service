@@ -11,7 +11,8 @@
 # every other service.
 /contracts/
 
-# Generated gRPC stubs live beside the vendored proto and are never committed.
+# Generated gRPC stubs, written by bin/sync-contracts from the vendored proto. Never committed:
+# generated code in the tree is generated code that drifts from the contract it came from.
 /internal/contractgen/
 
 coverage.out

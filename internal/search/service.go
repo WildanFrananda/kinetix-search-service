@@ -21,6 +21,9 @@ type Index[D any] interface {
 
 type Source[D any] interface {
 	ChangedSince(ctx context.Context, cur Cursor, limit int) (Changes[D], error)
+}
+
+type Counter interface {
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -29,6 +32,6 @@ type Checkpoint interface {
 	Save(ctx context.Context, c Collection, cur Cursor) error
 }
 
-type Clock interface{
+type Clock interface {
 	Now() time.Time
 }

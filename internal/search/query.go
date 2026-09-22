@@ -31,7 +31,8 @@ type Query struct {
 }
 
 func (q Query) ForPrincipal(p MerchantID) Query {
-	q.OnBehalfOf = p; return q
+	q.OnBehalfOf = p
+	return q
 }
 
 type QueryOption func(*Query)

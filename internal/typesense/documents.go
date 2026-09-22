@@ -37,6 +37,16 @@ func number(m map[string]any, key string) int64 {
 	}
 }
 
+func boolean(m map[string]any, key string) bool {
+	v, ok := m[key].(bool)
+
+	if !ok {
+		return false
+	}
+
+	return v
+}
+
 func stringList(m map[string]any, key string) []string {
 	raw, ok := m[key].([]any)
 	if !ok {
@@ -93,6 +103,8 @@ func EncodeMerchant(d search.MerchantDoc) map[string]any {
 	return map[string]any{
 		"id":           d.ID.String(),
 		"display_name": d.DisplayName,
+		"status":       d.Status,
+		"may_sell":     d.MaySell,
 		"categories":   d.Categories,
 		"updated_at":   millis(d.UpdatedAt),
 	}
@@ -111,6 +123,8 @@ func DecodeMerchant(m map[string]any) (search.MerchantDoc, error) {
 	return search.MerchantDoc{
 		ID:          id,
 		DisplayName: text(m, "display_name"),
+		Status:      text(m, "status"),
+		MaySell:     boolean(m, "may_sell"),
 		Categories:  stringList(m, "categories"),
 		UpdatedAt:   timeFromMillis(m["updated_at"]),
 	}, nil
@@ -139,7 +153,7 @@ func DecodeOrder(m map[string]any) (search.OrderDoc, error) {
 			"indexed order has an unusable id",
 		)
 	}
-	buyer, _ := search.NewMerchantID(text(m, "buyer"))
+	buyer, _ := search.NewBuyerID(text(m, "buyer"))
 	merchant, _ := search.NewMerchantID(text(m, "merchant_id"))
 
 	return search.OrderDoc{
