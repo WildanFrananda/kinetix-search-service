@@ -1,0 +1,115 @@
+name: CI
+
+# ⚠ PAIRED FILE: .gitlab-ci.yml
+# `origin` is GitHub and GitLab is a mirror. Both assert the same things and must be changed
+# together; if they drift, the two platforms disagree about whether the same commit is good.
+#
+# Three jobs, and each guards something this repository can get wrong quietly:
+#
+#   * `purity` runs bin/check-core-purity. The hexagon here is an import rule, and a rule nothing
+#     runs is a comment. It is controlled both ways in its own tests: a stdlib import passes, a
+#     testify import fails.
+#   * `test` runs the suite against a REAL Typesense. Without KINETIX_TYPESENSE_URL the engine
+#     tests skip, and a skipped test proves nothing — the skip is a developer convenience, not a
+#     CI mode.
+#   * `lint` runs golangci-lint with errcheck among others; an ignored checkpoint.Save is the
+#     failure it was added for.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# actions/checkout is v6 because every other repository in the estate pins v6 and a PR shows the
+# same check either way. setup-go and golangci-lint-action have no precedent here — this is the
+# only Go repository — so they are on the current major. The linter action matters: golangci-lint
+# is v2, whose config format older majors of the action do not understand.
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  purity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Generate the contracts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+          ./bin/sync-contracts
+      - run: ./bin/check-core-purity
+
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      typesense:
+        image: typesense/typesense:30.2
+        env:
+          TYPESENSE_DATA_DIR: /data
+          TYPESENSE_API_KEY: ci-ephemeral-not-a-deployed-credential
+          TYPESENSE_ENABLE_CORS: "false"
+        ports: ["8108:8108"]
+        options: >-
+          --health-cmd="curl -sf http://localhost:8108/health"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-ephemeral-not-a-deployed-credential
+          POSTGRES_DB: kinetix_search_dev
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U ci"
+          --health-interval=10s --health-timeout=5s --health-retries=5
+
+    env:
+      # Config and ephemeral credentials only. Neither of these exists anywhere but this runner.
+      KINETIX_TYPESENSE_URL: http://localhost:8108
+      KINETIX_TYPESENSE_KEY: ci-ephemeral-not-a-deployed-credential
+      SEARCH_DATABASE_URL: postgres://ci:ci-ephemeral-not-a-deployed-credential@localhost:5432/kinetix_search_dev?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Generate the contracts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+          ./bin/sync-contracts
+      - run: go build ./...
+      - name: Apply the schema
+        run: go run ./cmd/migrate
+      - run: ./bin/test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Generate the contracts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
+          ./bin/sync-contracts
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.2

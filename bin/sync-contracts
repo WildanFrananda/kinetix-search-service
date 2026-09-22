@@ -71,9 +71,26 @@ mkdir -p "$GENDIR"
 # silently, but is confusing enough to be worth naming.
 MODULE="github.com/WildanFrananda/kinetix-search-service/internal/contractgen"
 
-# shellcheck disable=SC2086  # SPOKEN is a deliberate word list
+# The well-known types (google/protobuf/timestamp.proto and friends). protoc from Homebrew
+# resolves them from inside the binary, so this script was silent about them and worked on a
+# laptop. Debian's protobuf-compiler is 3.21.12, which does not: it reads them from
+# /usr/include, shipped by libprotobuf-dev. The Docker build failed on exactly that with
+# "google/protobuf/timestamp.proto: File not found" while nothing was wrong with the contract.
+#
+# So: add the include directory when one exists, and say nothing when protoc already has them.
+WKT=""
+for dir in /usr/include /usr/local/include /opt/homebrew/include; do
+  if [ -f "$dir/google/protobuf/timestamp.proto" ]; then
+    WKT="--proto_path=$dir"
+    break
+  fi
+done
+
+
+# shellcheck disable=SC2086  # SPOKEN is a deliberate word list, WKT is one flag or nothing
 protoc \
   --proto_path="$DEST/proto" \
+  $WKT \
   --go_out="$GENDIR" --go_opt=paths=source_relative \
   --go_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
   --go_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \

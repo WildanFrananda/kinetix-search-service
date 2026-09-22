@@ -24,7 +24,11 @@ No client ever writes to search.
 
 ```
 cmd/searchd/            the service. composition root.
-cmd/reindex/            one-shot full reindex. its own binary.
+cmd/syncd/              the incremental sync loop over all three collections.
+cmd/reindex/            one-shot full reindex, named: reindex <products|merchants|orders|all>.
+cmd/migrate/            one-shot migrator. the schema is embedded, not mounted.
+internal/migrations/    the .sql goose files, embedded by cmd/migrate.
+internal/mesh/          mTLS credentials shared by the three gRPC clients.
 internal/search/        THE CORE. imports the standard library and nothing else.
 internal/querying/      use case: Finder[D]
 internal/indexing/      use cases: Syncer[D], Reindexer[D]
@@ -149,10 +153,36 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
   across the whole engine and runs as a separate process, which places no obligation on this
   estate. Pin **`typesense-go/v3`** — `v4` is an alpha.
 
-## What is not built yet
+## Running, and what still is not built
 
-CI, the Dockerfile and the compose entries for `searchd`, `syncd` and `reindex`. Elasticsearch is
-still in compose and has to go in the same change that adds Typesense.
+The Dockerfile, CI (GitHub and the paired GitLab pipeline) and the compose entries all landed on
+2026-09-22. `kinetix-search-migrate`, `kinetix-search-service` and `kinetix-search-sync` are in
+`compose.yaml`; `kinetix-search-reindex` is in the `tools` profile so `docker compose up` never
+starts it. Elasticsearch is gone from the estate in the same change.
+
+One image carries all four binaries on purpose: they are the same code against the same contracts,
+and a separate image for each is one more thing that can be a version behind the one serving
+queries.
+
+A fresh volume needs one bootstrap: `/health/ready` answers 503 with `index_unavailable` until a
+generation has been promoted, so `docker compose run --rm kinetix-search-reindex all` is what makes
+the container healthy the first time. That is the readiness check doing its job — a search service
+that calls itself ready with no index answers every query "no products".
+
+Two traps the image found, both invisible on a laptop:
+
+- **Debian's protoc is 3.21.12 and does not bundle the well-known types.** Homebrew's does, so
+  `bin/sync-contracts` worked here and failed in the image with
+  `google/protobuf/timestamp.proto: File not found`, which reads like a broken contract. The script
+  now adds `/usr/include` to the proto path when the files are there, and the image installs
+  `libprotobuf-dev` to put them there.
+- **Typesense will not create its `--data-dir`.** The compose entry mounts `typesense_data:/data`,
+  and without it the container exits rather than starting empty.
+
+Still not built: the storefront has no gateway route to `/api/v1/products/search` — the HTTP edge
+is reachable from inside the mesh and from nowhere else — and production carries no image digest
+for this service yet, so `docker compose config` refuses to render prod until the first
+`build-and-push` fills `deploy/prod/versions.env`.
 
 All four contract changes are published: `catalog/v1` with `ChangedSince` (and catalog's first gRPC
 server), `search/v1`, `identity.v1.MerchantsChangedSince` and `order.v1.OrdersChangedSince`, pinned
