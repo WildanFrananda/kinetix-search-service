@@ -52,13 +52,18 @@ jobs:
       typesense:
         image: typesense/typesense:30.2
         env:
-          TYPESENSE_DATA_DIR: /data
+          # /tmp, not /data. Typesense refuses to start when its data directory does not exist and
+          # will not create one, and a service container has no volume to make /data with:
+          # "Typesense failed to start. Data directory /data does not exist." The compose entry
+          # mounts a volume instead; here the directory has to be one the image already has.
+          TYPESENSE_DATA_DIR: /tmp
           TYPESENSE_API_KEY: ci-ephemeral-not-a-deployed-credential
           TYPESENSE_ENABLE_CORS: "false"
         ports: ["8108:8108"]
-        options: >-
-          --health-cmd="curl -sf http://localhost:8108/health"
-          --health-interval=10s --health-timeout=5s --health-retries=10
+        # No --health-cmd. A service healthcheck runs INSIDE the container, and this image ships
+        # neither curl nor wget nor nc, so any HTTP probe written here fails for want of a client
+        # and the container is reported unhealthy while the engine answers perfectly well. The
+        # port is published, so the wait below does the same job from the runner, which has curl.
 
       postgres:
         image: postgres:16-alpine
@@ -91,6 +96,21 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
           ./bin/sync-contracts
       - run: go build ./...
+
+      # Bounded, and it reports the container's own death rather than looping until the job times
+      # out. Silence is not success.
+      - name: Wait for Typesense
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8108/health | grep -q '"ok":true'; then
+              echo "typesense ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "typesense did not answer /health within 30s"
+          exit 1
+
       - name: Apply the schema
         run: go run ./cmd/migrate
       - run: ./bin/test

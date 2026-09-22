@@ -76,9 +76,13 @@ test:
   extends: .go
   stage: test
   services:
+    # --data-dir=/tmp, not /data. Typesense refuses to start when its data directory does not
+    # exist and will not create one, and a service container has no volume to make /data with:
+    # "Typesense failed to start. Data directory /data does not exist." The compose entry mounts
+    # a volume; here it has to be a directory the image already has.
     - name: typesense/typesense:30.2
       alias: typesense
-      command: ["--data-dir=/data", "--api-key=ci-ephemeral-not-a-deployed-credential"]
+      command: ["--data-dir=/tmp", "--api-key=ci-ephemeral-not-a-deployed-credential"]
     - name: postgres:16-alpine
       alias: postgres
   variables:
@@ -91,6 +95,15 @@ test:
     SEARCH_DATABASE_URL: postgres://ci:ci-ephemeral-not-a-deployed-credential@postgres:5432/kinetix_search_dev?sslmode=disable
   script:
     - go build ./...
+    # Bounded, and it says what failed rather than looping until the job times out.
+    - |
+      for i in $(seq 1 30); do
+        if curl -sf http://typesense:8108/health | grep -q '"ok":true'; then
+          echo "typesense ready after ${i}s"; break
+        fi
+        sleep 1
+        if [ "$i" = "30" ]; then echo "typesense did not answer /health within 30s"; exit 1; fi
+      done
     - go run ./cmd/migrate
     - ./bin/test
   rules:
