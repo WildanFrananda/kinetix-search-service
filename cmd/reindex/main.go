@@ -64,7 +64,14 @@ func run(log *slog.Logger) error {
 	checkpoint := postgres.NewCheckpoint(pool)
 
 	reindexer := indexing.NewReindexer(
-		search.Products, catalog, index, checkpoint, system.Clock{}, log, cfg.SyncPageSize)
+		search.Products,
+		catalog,
+		index,
+		checkpoint,
+		system.Clock{},
+		log,
+		cfg.SyncPageSize,
+	)
 
 	started := time.Now()
 	log.InfoContext(ctx, "reindex starting", "collection", string(search.Products))

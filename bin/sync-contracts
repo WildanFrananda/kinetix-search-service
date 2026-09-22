@@ -14,8 +14,8 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
-TAG="v1.0.17"
-COMMIT="6c19a49da978f887ad87fcbd390553bdbd4603a7"
+TAG="v1.0.18"
+COMMIT="77c03f6c345aee5e946846ce6ba7a1e24623a182"
 DEST="$HERE/contracts"
 GENDIR="$HERE/internal/contractgen"
 
@@ -30,7 +30,7 @@ if [ -d "$DEST/.git" ]; then
   # The generated file, not the directory: protoc creates the directory before it runs and
   # leaves it behind empty when it fails, so "the folder exists" reports a successful sync that
   # produced nothing.
-  if [ "$got" = "$COMMIT" ] && [ -f "$GENDIR/catalog/v1/catalog.pb.go" ]; then
+  if [ "$got" = "$COMMIT" ] && [ -f "$GENDIR/catalog/v1/catalog.pb.go" ] && [ -f "$GENDIR/search/v1/search.pb.go" ]; then
     echo "contracts already at $TAG ($COMMIT)"
     exit 0
   fi
@@ -54,7 +54,7 @@ fi
 # generation means reaching for one of those is a compile error rather than a review comment.
 #
 # `order` and `identity` will join this list when the merchant and order collections are wired up.
-SPOKEN="common/v1/common.proto catalog/v1/catalog.proto"
+SPOKEN="common/v1/common.proto catalog/v1/catalog.proto search/v1/search.proto"
 
 for path in $SPOKEN; do
   test -f "$DEST/proto/$path" || {
@@ -79,9 +79,11 @@ protoc \
   --go_out="$GENDIR" --go_opt=paths=source_relative \
   --go_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
   --go_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \
+  --go_opt=Msearch/v1/search.proto="$MODULE/search/v1" \
   --go-grpc_out="$GENDIR" --go-grpc_opt=paths=source_relative \
   --go-grpc_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
   --go-grpc_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \
+  --go-grpc_opt=Msearch/v1/search.proto="$MODULE/search/v1" \
   $SPOKEN
 
 echo "contracts synced at $TAG ($COMMIT); generated:"
