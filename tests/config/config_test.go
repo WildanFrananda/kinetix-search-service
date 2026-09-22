@@ -15,6 +15,8 @@ func setMinimum(t *testing.T) {
 	t.Setenv("SEARCH_TYPESENSE_URL", "http://typesense:8108")
 	t.Setenv("SEARCH_TYPESENSE_API_KEY", "key")
 	t.Setenv("SEARCH_CATALOG_ENDPOINT", "kinetix-catalog-service:50058")
+	t.Setenv("SEARCH_IDENTITY_ENDPOINT", "kinetix-identity-service:50051")
+	t.Setenv("SEARCH_ORDER_ENDPOINT", "kinetix-order-service:50053")
 	t.Setenv("KINETIX_PKI_DIR", "/pki")
 }
 
@@ -24,6 +26,8 @@ func TestEveryMissingVariableIsNamedAtOnce(t *testing.T) {
 		"SEARCH_TYPESENSE_URL",
 		"SEARCH_TYPESENSE_API_KEY",
 		"SEARCH_CATALOG_ENDPOINT",
+		"SEARCH_IDENTITY_ENDPOINT",
+		"SEARCH_ORDER_ENDPOINT",
 		"KINETIX_PKI_DIR",
 	} {
 		t.Setenv(name, "")
@@ -37,6 +41,8 @@ func TestEveryMissingVariableIsNamedAtOnce(t *testing.T) {
 		"SEARCH_TYPESENSE_URL",
 		"SEARCH_TYPESENSE_API_KEY",
 		"SEARCH_CATALOG_ENDPOINT",
+		"SEARCH_IDENTITY_ENDPOINT",
+		"SEARCH_ORDER_ENDPOINT",
 		"KINETIX_PKI_DIR",
 	} {
 		require.Containsf(

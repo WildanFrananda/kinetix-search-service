@@ -63,7 +63,7 @@ func TestMerchantSurvivesARoundTrip(t *testing.T) {
 func TestOrderSurvivesARoundTrip(t *testing.T) {
 	id, err := search.NewOrderID("KNX-20260921-7QF3")
 	require.NoError(t, err)
-	buyer, err := search.NewMerchantID("principal-9")
+	buyer, err := search.NewBuyerID("principal-9")
 	require.NoError(t, err)
 	merchant, err := search.NewMerchantID("shop-1")
 	require.NoError(t, err)

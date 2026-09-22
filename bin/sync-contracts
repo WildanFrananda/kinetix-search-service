@@ -14,8 +14,8 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
-TAG="v1.0.18"
-COMMIT="77c03f6c345aee5e946846ce6ba7a1e24623a182"
+TAG="v1.0.19"
+COMMIT="9008e09bd71a6f2181f2dbc5f6b0f5a1f6a982ae"
 DEST="$HERE/contracts"
 GENDIR="$HERE/internal/contractgen"
 
@@ -52,9 +52,7 @@ fi
 # The contract repository carries twelve packages. Search pulls products from catalog and asks
 # identity who somebody is; it has no business with payment, pricing or the fleet. Narrowing the
 # generation means reaching for one of those is a compile error rather than a review comment.
-#
-# `order` and `identity` will join this list when the merchant and order collections are wired up.
-SPOKEN="common/v1/common.proto catalog/v1/catalog.proto search/v1/search.proto"
+SPOKEN="common/v1/common.proto catalog/v1/catalog.proto search/v1/search.proto identity/v1/identity.proto order/v1/order.proto"
 
 for path in $SPOKEN; do
   test -f "$DEST/proto/$path" || {
@@ -80,10 +78,14 @@ protoc \
   --go_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
   --go_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \
   --go_opt=Msearch/v1/search.proto="$MODULE/search/v1" \
+  --go_opt=Midentity/v1/identity.proto="$MODULE/identity/v1" \
+  --go_opt=Morder/v1/order.proto="$MODULE/order/v1" \
   --go-grpc_out="$GENDIR" --go-grpc_opt=paths=source_relative \
   --go-grpc_opt=Mcommon/v1/common.proto="$MODULE/common/v1" \
   --go-grpc_opt=Mcatalog/v1/catalog.proto="$MODULE/catalog/v1" \
   --go-grpc_opt=Msearch/v1/search.proto="$MODULE/search/v1" \
+  --go-grpc_opt=Midentity/v1/identity.proto="$MODULE/identity/v1" \
+  --go-grpc_opt=Morder/v1/order.proto="$MODULE/order/v1" \
   $SPOKEN
 
 echo "contracts synced at $TAG ($COMMIT); generated:"

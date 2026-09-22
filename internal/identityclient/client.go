@@ -1,4 +1,4 @@
-package catalogclient
+package identityclient
 
 import (
 	"context"
@@ -8,21 +8,21 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	catalogv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/catalog/v1"
+	identityv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/identity/v1"
 	"github.com/WildanFrananda/kinetix-search-service/internal/mesh"
 	"github.com/WildanFrananda/kinetix-search-service/internal/search"
 )
 
 type Client struct {
 	conn     *grpc.ClientConn
-	stub     catalogv1.CatalogServiceClient
+	stub     identityv1.IdentityServiceClient
 	deadline time.Duration
 }
 
-var _ search.Source[search.ProductDoc] = (*Client)(nil)
+var _ search.Source[search.MerchantDoc] = (*Client)(nil)
 
 func Dial(s mesh.Settings) (*Client, error) {
-	creds, err := mesh.MutualTLS("catalogclient.Dial", s)
+	creds, err := mesh.MutualTLS("identityclient.Dial", s)
 
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func Dial(s mesh.Settings) (*Client, error) {
 	if err != nil {
 		return nil, search.Errf(
 			search.KindDependencyUnavailable,
-			"catalogclient.Dial",
+			"identityclient.Dial",
 			err,
 			"dialing %s",
 			s.Endpoint,
@@ -42,7 +42,7 @@ func Dial(s mesh.Settings) (*Client, error) {
 
 	return &Client{
 		conn:     conn,
-		stub:     catalogv1.NewCatalogServiceClient(conn),
+		stub:     identityv1.NewIdentityServiceClient(conn),
 		deadline: s.DeadlineOr(10 * time.Second),
 	}, nil
 }
@@ -55,55 +55,49 @@ func (c *Client) ChangedSince(
 	ctx context.Context,
 	cur search.Cursor,
 	limit int,
-) (search.Changes[search.ProductDoc], error) {
+) (search.Changes[search.MerchantDoc], error) {
 	ctx, cancel := context.WithTimeout(ctx, c.deadline)
 	defer cancel()
 
-	response, err := c.stub.ChangedSince(ctx, &catalogv1.ChangedSinceRequest{
+	response, err := c.stub.MerchantsChangedSince(ctx, &identityv1.MerchantsChangedSinceRequest{
 		Cursor: ToProtoCursor(cur),
 		Limit:  int32(limit), //nolint:gosec // the use case caps limit far below int32
 	})
 	if err != nil {
-		return search.Changes[search.ProductDoc]{}, fail(
-			"catalogclient.ChangedSince",
+		return search.Changes[search.MerchantDoc]{}, fail(
+			"identityclient.ChangedSince",
 			err,
 			"paging from %q",
 			cur.LastID,
 		)
 	}
 
-	upserted := make([]search.ProductDoc, 0, len(response.GetUpserted()))
-	for _, p := range response.GetUpserted() {
-		doc, convErr := ToDoc(p)
+	upserted := make([]search.MerchantDoc, 0, len(response.GetUpserted()))
+
+	for _, m := range response.GetUpserted() {
+		doc, convErr := ToDoc(m)
+
 		if convErr != nil {
-			return search.Changes[search.ProductDoc]{}, convErr
+			return search.Changes[search.MerchantDoc]{}, convErr
 		}
+
 		upserted = append(upserted, doc)
 	}
 
-	return search.Changes[search.ProductDoc]{
+	return search.Changes[search.MerchantDoc]{
 		Upserted: upserted,
-		Removed:  response.GetRemovedSkus(),
+		Removed:  response.GetRemovedPrincipalIds(),
 		Next:     FromProtoCursor(response.GetNext()),
 		HasMore:  response.GetHasMore(),
 	}, nil
 }
 
-func (c *Client) Count(ctx context.Context) (int64, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.deadline)
-	defer cancel()
-
-	response, err := c.stub.CountProducts(ctx, &catalogv1.CountProductsRequest{})
-	if err != nil {
-		return 0, fail("catalogclient.Count", err, "counting products")
-	}
-	return response.GetTotal(), nil
-}
-
 func fail(op string, err error, format string, args ...any) error {
 	kind := search.KindDependencyUnavailable
+
 	if status.Code(err) == codes.InvalidArgument {
 		kind = search.KindMalformedQuery
 	}
+
 	return search.Errf(kind, op, err, format, args...)
 }

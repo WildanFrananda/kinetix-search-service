@@ -151,10 +151,35 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 
 ## What is not built yet
 
-Everything from step 2 onward in `PLAN.md`: the Typesense adapter, the Postgres adapter, the three
-gRPC source clients, the HTTP and gRPC edges, the composition roots, `bin/sync-contracts`, the
-index mapping, CI, the Dockerfile and the compose entries.
+CI, the Dockerfile and the compose entries for `searchd`, `syncd` and `reindex`. Elasticsearch is
+still in compose and has to go in the same change that adds Typesense.
 
-Four contract changes are owed before this service can index anything real: a new `catalog/v1`
-(and catalog's first gRPC server), a new `search/v1`, and one new RPC each on `identity/v1` and
-`order/v1`.
+All four contract changes are published: `catalog/v1` with `ChangedSince` (and catalog's first gRPC
+server), `search/v1`, `identity.v1.MerchantsChangedSince` and `order.v1.OrdersChangedSince`, pinned
+here at **v1.0.19**.
+
+## Three sources, two of which cannot count
+
+`search.Source[D]` is the walk. Counting is a **separate** interface, `search.Counter`, because only
+catalog serves a total:
+
+- **catalog** implements both. A reindex of products is checked against catalog's own count — a walk
+  that ends early is caught.
+- **identity** and **order** implement `Source` only. A reindex of those collections is checked
+  against what the walk sent, which catches an engine that dropped documents but not a source that
+  stopped short. The log line says which check ran (`counted_against`), so a weaker guarantee is
+  never mistaken for the strong one.
+
+The alternative was to have those clients return a count they had invented, which is the estate's
+house failure mode wearing a number.
+
+Two more things are deliberate:
+
+- **An order with no buyer is refused, not indexed.** Privacy here is a filter on the buyer, so a
+  record with no buyer would sit in the index reachable by text alone. An order with no *merchant*
+  is kept: orders placed before order recorded its seller carry none, and the buyer can still find
+  their own order. Unknown stays unknown rather than becoming an id nobody owns.
+- **A merchant that may not sell is still indexed**, carrying `status` and `may_sell`. Deciding
+  which shops a customer may find is this service's job, not identity's; identity reports standing
+  and search filters on it. `removed_principal_ids` is for a merchant that ceases to exist, and
+  identity has no such path today, so that list is honestly always empty.

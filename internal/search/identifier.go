@@ -64,6 +64,27 @@ func (o OrderID) set(s string) OrderID {
 	return o
 }
 
+type BuyerID struct {
+	v string
+}
+
+func NewBuyerID(raw string) (BuyerID, error) {
+	return newID[BuyerID](raw, "search.NewBuyerID")
+}
+
+func (b BuyerID) String() string {
+	return b.v
+}
+
+func (b BuyerID) IsZero() bool {
+	return b.v == ""
+}
+
+func (b BuyerID) set(s string) BuyerID {
+	b.v = s
+	return b
+}
+
 type identifier[T any] interface {
 	set(string) T
 }
