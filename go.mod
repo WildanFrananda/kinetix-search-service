@@ -3,6 +3,7 @@ module github.com/WildanFrananda/kinetix-search-service
 go 1.26.4
 
 require (
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/stretchr/testify v1.12.1
 	github.com/typesense/typesense-go/v3 v3.2.0
