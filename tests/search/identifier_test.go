@@ -10,7 +10,7 @@ import (
 )
 
 func TestIdentifiersRefuseWhatIsNotAnIdentifier(t *testing.T) {
-	makers := map[string]func(string) (interface{ String() string }, error) {
+	makers := map[string]func(string) (interface{ String() string }, error){
 		"ProductID": func(s string) (interface{ String() string }, error) {
 			return search.NewProductID(s)
 		},

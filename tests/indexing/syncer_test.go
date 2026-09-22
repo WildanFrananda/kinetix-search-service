@@ -51,7 +51,7 @@ func TestSyncWalksEveryPage(t *testing.T) {
 		t,
 		search.Cursor{
 			UpdatedThrough: noon.Add(time.Minute),
-			LastID: "p-2",
+			LastID:         "p-2",
 		},
 		checkpoint.Cursors[search.Products],
 	)

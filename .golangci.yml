@@ -27,6 +27,12 @@ linters:
           disabled: true   # doc comments are required by review, not by a linter counting them
 
   exclusions:
+    # contracts/ is a clone of kinetix-contracts, fetched by bin/sync-contracts. It is somebody
+    # else's repository sitting in this working tree, and holding it to this project's rules
+    # reports problems nobody here can fix.
+    paths:
+      - contracts/
+      - internal/contractgen/
     rules:
       # Table-driven tests build documents inline; a helper per field would obscure the table.
       - path: _test\.go

@@ -87,10 +87,10 @@ func TestLoadCorpusForMeasurement(t *testing.T) {
 					offset+i,
 				),
 				Description: "Deskripsi produk nomor " + strconv.Itoa(offset+i) + ". Bahan berkualitas, pengiriman cepat dari seluruh Indonesia.",
-				Categories: []string{categories[source.Intn(len(categories))]},
-				PriceMinor: int64(source.Intn(5_000_000) + 10_000),
-				Currency:   "IDR",
-				UpdatedAt:  time.Now().UTC().Add(-time.Duration(source.Intn(90*24)) * time.Hour),
+				Categories:  []string{categories[source.Intn(len(categories))]},
+				PriceMinor:  int64(source.Intn(5_000_000) + 10_000),
+				Currency:    "IDR",
+				UpdatedAt:   time.Now().UTC().Add(-time.Duration(source.Intn(90*24)) * time.Hour),
 			})
 		}
 

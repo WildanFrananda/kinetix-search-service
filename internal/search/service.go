@@ -29,6 +29,6 @@ type Checkpoint interface {
 	Save(ctx context.Context, c Collection, cur Cursor) error
 }
 
-type Clock interface{
+type Clock interface {
 	Now() time.Time
 }

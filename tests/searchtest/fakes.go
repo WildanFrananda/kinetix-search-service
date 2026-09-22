@@ -27,7 +27,7 @@ func (f *FakeSearcher[D]) Suggest(context.Context, string, int) ([]string, error
 
 var _ search.Searcher[search.ProductDoc] = (*FakeSearcher[search.ProductDoc])(nil)
 
-type FixedClock struct{
+type FixedClock struct {
 	At time.Time
 }
 
