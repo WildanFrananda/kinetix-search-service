@@ -46,14 +46,14 @@ func (f *Finder[D]) Find(ctx context.Context, q search.Query) (search.Results[D]
 		return search.Results[D]{}, err
 	}
 
-	cur, err := f.checkpoint.Load(ctx, f.collection)
+	progress, err := f.checkpoint.Load(ctx, f.collection)
 	if err != nil {
 		return search.Results[D]{}, err
 	}
 
-	age := f.clock.Now().Sub(cur.UpdatedThrough)
+	age := f.clock.Now().Sub(progress.SavedAt)
 	results.Freshness = search.Freshness{
-		IndexedThrough: cur.UpdatedThrough,
+		IndexedThrough: progress.Cursor.UpdatedThrough,
 		Age:            age,
 		Stale:          age > f.staleAfter,
 	}

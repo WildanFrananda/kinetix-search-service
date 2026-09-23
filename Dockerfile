@@ -61,8 +61,11 @@ EXPOSE 8088 50058
 
 USER search
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8088/health/ready > /dev/null || exit 1
+# No HEALTHCHECK here. This image carries four binaries and only one of them serves HTTP: an
+# image-level probe against /health/ready is answered by searchd and by nothing else, so syncd
+# inherited it, never answered, and was reported unhealthy forty seconds after every start — a
+# failing deploy for a process that was working. compose declares the probe for the container that
+# can answer it.
 
 # searchd is the service. syncd, reindex and migrate are in the same image on purpose: they are
 # the same code against the same contracts, and a separate image for each is one more thing that

@@ -1,5 +1,5 @@
 -- name: LoadCheckpoint :one
-SELECT updated_through, last_id FROM sync_checkpoint WHERE collection = $1;
+SELECT updated_through, last_id, saved_at FROM sync_checkpoint WHERE collection = $1;
 
 -- name: SaveCheckpoint :exec
 INSERT INTO sync_checkpoint (collection, updated_through, last_id, saved_at)
