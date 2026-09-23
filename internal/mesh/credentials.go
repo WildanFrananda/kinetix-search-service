@@ -3,6 +3,7 @@ package mesh
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -43,6 +44,18 @@ func MutualTLS(op string, s Settings) (credentials.TransportCredentials, error) 
 			op,
 			nil,
 			"no server name to verify the peer against",
+		)
+	}
+
+	if host := hostOf(s.Endpoint); host != s.ServerName {
+		return nil, search.Errf(
+			search.KindDependencyUnavailable,
+			op,
+			nil,
+			"endpoint %q is host %q, which is not the %q this caller expects to verify",
+			s.Endpoint,
+			host,
+			s.ServerName,
 		)
 	}
 
@@ -89,9 +102,18 @@ func MutualTLS(op string, s Settings) (credentials.TransportCredentials, error) 
 	return credentials.NewTLS(&tls.Config{
 		Certificates: []tls.Certificate{pair},
 		RootCAs:      roots,
-		ServerName:   s.ServerName,
 		MinVersion:   tls.VersionTLS13,
 	}), nil
+}
+
+func hostOf(endpoint string) string {
+	host, _, err := net.SplitHostPort(endpoint)
+
+	if err != nil {
+		return endpoint
+	}
+
+	return host
 }
 
 func read(op, dir, name string) ([]byte, error) {
