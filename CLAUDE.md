@@ -175,8 +175,13 @@ non-empty ServerName *becomes* the authority, which carries no port. order maps 
 `RequireHost("*:50055")`, so a portless authority matched no endpoint and ASP.NET answered a plain
 404 (`Unimplemented … unexpected HTTP status code received from server: 404`). catalog and identity
 impose no host filter, so products and merchants synced while orders did not — a half-filled index
-that looked like it worked. `mesh.MutualTLS` now leaves ServerName unset and asserts instead that
-the endpoint's host is the name the caller expects.
+that looked like it worked. `mesh.MutualTLS` now leaves it unset, and there is no
+"expected server name" setting at all: the handshake verifies the host being dialled, and a leaf
+here carries several DNS names on purpose — catalog's covers both `kinetix-catalog-service` and
+`kinetix-catalog-grpc`, and the endpoint decides which one is checked. An assertion that the host
+must equal a configured name was added and removed the same day: it refused
+`kinetix-catalog-grpc:50058` against a default of `kinetix-catalog-service` and crash-looped syncd
+in production.
 
 Two traps the image found, both invisible on a laptop:
 

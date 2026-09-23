@@ -36,14 +36,12 @@ func writePKI(t *testing.T, name string) string {
 	require.NoError(t, err)
 
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: name},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		DNSNames:     []string{name},
-		IsCA:         true,
-		// Without BasicConstraintsValid the CA flag is never encoded, and Go then refuses this
-		// certificate as a root with "certificate signed by unknown authority".
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: name},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		DNSNames:              []string{name},
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{
@@ -68,29 +66,16 @@ func writePKI(t *testing.T, name string) string {
 	return dir
 }
 
-func settings(t *testing.T, endpoint, serverName string) mesh.Settings {
-	t.Helper()
-
-	return mesh.Settings{
-		Endpoint:   endpoint,
-		PKIDir:     writePKI(t, serverName),
-		ServerName: serverName,
-	}
-}
-
 func TestTheAuthorityKeepsItsPort(t *testing.T) {
 	dir := writePKI(t, "kinetix-order-service")
 	creds, err := mesh.MutualTLS("test", mesh.Settings{
-		Endpoint:   "kinetix-order-service:50055",
-		PKIDir:     dir,
-		ServerName: "kinetix-order-service",
+		Endpoint: "kinetix-order-service:50055",
+		PKIDir:   dir,
 	})
 	require.NoError(t, err)
 
 	seen := serveAndReport(t, dir)
-	// passthrough:/// so the target is handed to the dialer verbatim instead of going to DNS —
-	// the name is a compose service that does not resolve here. The authority is still the
-	// endpoint, which is the thing under test.
+
 	callThrough(t, creds, "passthrough:///kinetix-order-service:50055", seen.addr)
 
 	select {
@@ -102,6 +87,41 @@ func TestTheAuthorityKeepsItsPort(t *testing.T) {
 	}
 }
 
+func TestTheHandshakeVerifiesTheHostBeingDialled(t *testing.T) {
+	dir := writePKI(t, "kinetix-order-service")
+	creds, err := mesh.MutualTLS("test", mesh.Settings{
+		Endpoint: "kinetix-review-service:50057",
+		PKIDir:   dir,
+	})
+	require.NoError(t, err)
+
+	seen := serveAndReport(t, dir)
+	err = call(t, creds, "passthrough:///kinetix-review-service:50057", seen.addr)
+
+	require.Error(t, err, "a leaf for another name must not satisfy this dial")
+	require.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestAMissingPKIDirectoryIsRefused(t *testing.T) {
+	_, err := mesh.MutualTLS("test", mesh.Settings{Endpoint: "kinetix-order-service:50055"})
+
+	require.Error(t, err)
+	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
+}
+
+func TestAnEmptyLeafIsRefused(t *testing.T) {
+	dir := writePKI(t, "kinetix-order-service")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tls.crt"), nil, 0o600))
+
+	_, err := mesh.MutualTLS("test", mesh.Settings{
+		Endpoint: "kinetix-order-service:50055",
+		PKIDir:   dir,
+	})
+
+	require.Error(t, err, "an empty file is not a certificate")
+	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
+}
+
 type reported struct {
 	addr      string
 	authority chan string
@@ -110,7 +130,10 @@ type reported struct {
 func serveAndReport(t *testing.T, pkiDir string) reported {
 	t.Helper()
 
-	pair, err := tls.LoadX509KeyPair(filepath.Join(pkiDir, "tls.crt"), filepath.Join(pkiDir, "tls.key"))
+	pair, err := tls.LoadX509KeyPair(
+		filepath.Join(pkiDir, "tls.crt"),
+		filepath.Join(pkiDir, "tls.key"),
+	)
 	require.NoError(t, err)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -140,7 +163,7 @@ func serveAndReport(t *testing.T, pkiDir string) reported {
 	return out
 }
 
-func callThrough(t *testing.T, creds credentials.TransportCredentials, target, addr string) {
+func call(t *testing.T, creds credentials.TransportCredentials, target, addr string) error {
 	t.Helper()
 
 	conn, err := grpc.NewClient(target,
@@ -155,41 +178,19 @@ func callThrough(t *testing.T, creds credentials.TransportCredentials, target, a
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = conn.Invoke(ctx, "/probe.Probe/Ping", &emptypb.Empty{}, &emptypb.Empty{})
-	require.Error(t, err)
-	require.Equalf(t, codes.Unimplemented, status.Code(err), "the call never reached the server: %v", err)
+	return conn.Invoke(ctx, "/probe.Probe/Ping", &emptypb.Empty{}, &emptypb.Empty{})
 }
 
-func TestAnEndpointThatIsNotTheExpectedHostIsRefused(t *testing.T) {
-	_, err := mesh.MutualTLS(
-		"test",
-		settings(t, "kinetix-review-service:50057", "kinetix-order-service"),
+func callThrough(t *testing.T, creds credentials.TransportCredentials, target, addr string) {
+	t.Helper()
+
+	err := call(t, creds, target, addr)
+	require.Error(t, err)
+	require.Equalf(
+		t,
+		codes.Unimplemented,
+		status.Code(err),
+		"the call never reached the server: %v",
+		err,
 	)
-
-	require.Error(t, err, "pointing a client at another service must not pass quietly")
-	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
-}
-
-func TestAnEndpointWithNoPortIsStillCheckedAgainstItsName(t *testing.T) {
-	_, err := mesh.MutualTLS("test", settings(t, "kinetix-order-service", "kinetix-order-service"))
-	require.NoError(t, err)
-
-	_, err = mesh.MutualTLS("test", settings(t, "somewhere-else", "kinetix-order-service"))
-	require.Error(t, err)
-}
-
-func TestNoServerNameIsRefused(t *testing.T) {
-	_, err := mesh.MutualTLS("test", settings(t, "kinetix-order-service:50055", ""))
-
-	require.Error(t, err)
-}
-
-func TestAMissingPKIDirectoryIsRefused(t *testing.T) {
-	_, err := mesh.MutualTLS("test", mesh.Settings{
-		Endpoint:   "kinetix-order-service:50055",
-		ServerName: "kinetix-order-service",
-	})
-
-	require.Error(t, err)
-	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
 }
