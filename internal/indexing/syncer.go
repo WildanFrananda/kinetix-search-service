@@ -35,10 +35,12 @@ func NewSyncer[D any](
 }
 
 func (s *Syncer[D]) Once(ctx context.Context) error {
-	cur, err := s.checkpoint.Load(ctx, s.collection)
+	progress, err := s.checkpoint.Load(ctx, s.collection)
 	if err != nil {
 		return err
 	}
+
+	cur := progress.Cursor
 
 	gen, err := s.index.Live(ctx)
 	if err != nil {

@@ -131,7 +131,12 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
   mode, and `TestFindFailsRatherThanReturningNothing` is the gate.
 
 - **Freshness travels with every result.** `indexed_through`, `age_seconds`, `stale`. The caller is
-  told how current the answer is rather than left to assume.
+  told how current the answer is rather than left to assume — and the two facts are different
+  questions. `indexed_through` is the source's own watermark, the newest record indexed; `stale` is
+  measured from `sync_checkpoint.saved_at`, which syncd writes on every completed run including an
+  empty one. Measured from the record instead, a catalogue nobody edits for a week reports itself
+  stale for ever while the sync is confirming every thirty seconds that it is caught up — which is
+  what production did on 2026-09-23, a healthy index telling every caller it could not be trusted.
 
 - **The cursor is saved only after the write lands.** A cursor saved first skips exactly the page
   that failed, and the gap is never noticed.
@@ -163,6 +168,13 @@ starts it. Elasticsearch is gone from the estate in the same change.
 One image carries all four binaries on purpose: they are the same code against the same contracts,
 and a separate image for each is one more thing that can be a version behind the one serving
 queries.
+
+**The image declares no HEALTHCHECK, and that is deliberate.** It carries four binaries and only
+searchd serves HTTP, so an image-level probe against `/health/ready` is answered by one of them and
+inherited by the rest: syncd was reported unhealthy forty seconds after every start and failed the
+deploy while working perfectly. compose declares the probe on the container that can answer it, and
+states `healthcheck: disable: true` on the sync worker. Giving syncd a real liveness signal is worth
+doing and has not been done.
 
 A fresh volume needs one bootstrap: `/health/ready` answers 503 with `index_unavailable` until a
 generation has been promoted, so `docker compose run --rm kinetix-search-reindex all` is what makes

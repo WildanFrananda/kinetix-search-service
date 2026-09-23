@@ -28,7 +28,7 @@ type Counter interface {
 }
 
 type Checkpoint interface {
-	Load(ctx context.Context, c Collection) (Cursor, error)
+	Load(ctx context.Context, c Collection) (Progress, error)
 	Save(ctx context.Context, c Collection, cur Cursor) error
 }
 

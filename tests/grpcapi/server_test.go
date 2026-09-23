@@ -29,13 +29,17 @@ func productID(t *testing.T, raw string) search.ProductID {
 func newServer(
 	t *testing.T,
 	indexedThrough time.Time,
+	syncedAt time.Time,
 	staleAfter time.Duration,
 ) (*grpcapi.Server, *searchtest.FakeSearcher[search.ProductDoc]) {
 	t.Helper()
 	searcher := &searchtest.FakeSearcher[search.ProductDoc]{}
-	checkpoint := &searchtest.FakeCheckpoint{Cursors: map[search.Collection]search.Cursor{
-		search.Products: {UpdatedThrough: indexedThrough},
-	}}
+	checkpoint := &searchtest.FakeCheckpoint{
+		Cursors: map[search.Collection]search.Cursor{
+			search.Products: {UpdatedThrough: indexedThrough},
+		},
+		SavedAt: map[search.Collection]time.Time{search.Products: syncedAt},
+	}
 	finder := querying.NewFinder(
 		search.Products,
 		searcher,
@@ -48,7 +52,7 @@ func newServer(
 }
 
 func TestFreshnessTravelsOverGRPCToo(t *testing.T) {
-	server, _ := newServer(t, noon.Add(-2*time.Minute), 10*time.Minute)
+	server, _ := newServer(t, noon.Add(-2*time.Minute), noon.Add(-2*time.Minute), 10*time.Minute)
 
 	response, err := server.SearchProducts(context.Background(),
 		&searchv1.SearchProductsRequest{Text: "sepatu"})
@@ -60,7 +64,7 @@ func TestFreshnessTravelsOverGRPCToo(t *testing.T) {
 }
 
 func TestAStaleIndexIsReportedNotHidden(t *testing.T) {
-	server, _ := newServer(t, noon.Add(-2*time.Hour), 10*time.Minute)
+	server, _ := newServer(t, noon.Add(-2*time.Hour), noon.Add(-2*time.Hour), 10*time.Minute)
 
 	response, err := server.SearchProducts(
 		context.Background(),
@@ -71,7 +75,7 @@ func TestAStaleIndexIsReportedNotHidden(t *testing.T) {
 }
 
 func TestAnOutageIsUnavailableNotAnEmptyResult(t *testing.T) {
-	server, searcher := newServer(t, noon, time.Minute)
+	server, searcher := newServer(t, noon, noon, time.Minute)
 	searcher.Err = search.Errf(
 		search.KindIndexUnavailable,
 		"typesense.Search",
@@ -93,7 +97,7 @@ func TestAnOutageIsUnavailableNotAnEmptyResult(t *testing.T) {
 }
 
 func TestAMalformedQueryIsInvalidArgument(t *testing.T) {
-	server, _ := newServer(t, noon, time.Minute)
+	server, _ := newServer(t, noon, noon, time.Minute)
 
 	_, err := server.SearchProducts(
 		context.Background(),
@@ -104,7 +108,7 @@ func TestAMalformedQueryIsInvalidArgument(t *testing.T) {
 }
 
 func TestAnUnusableMerchantFilterIsRefused(t *testing.T) {
-	server, searcher := newServer(t, noon, time.Minute)
+	server, searcher := newServer(t, noon, noon, time.Minute)
 
 	_, err := server.SearchProducts(
 		context.Background(),
@@ -124,7 +128,7 @@ func TestRankingProfilesMapAcross(t *testing.T) {
 	}
 
 	for wire, want := range cases {
-		server, searcher := newServer(t, noon, time.Minute)
+		server, searcher := newServer(t, noon, noon, time.Minute)
 		_, err := server.SearchProducts(
 			context.Background(),
 			&searchv1.SearchProductsRequest{Text: "x", Ranking: wire},
@@ -135,7 +139,7 @@ func TestRankingProfilesMapAcross(t *testing.T) {
 }
 
 func TestThePageIsStillCapped(t *testing.T) {
-	server, searcher := newServer(t, noon, time.Minute)
+	server, searcher := newServer(t, noon, noon, time.Minute)
 
 	_, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{
 		Text: "x",
@@ -148,7 +152,7 @@ func TestThePageIsStillCapped(t *testing.T) {
 }
 
 func TestAHitCarriesTheSharedMoneyType(t *testing.T) {
-	server, searcher := newServer(t, noon, time.Minute)
+	server, searcher := newServer(t, noon, noon, time.Minute)
 	searcher.Results = search.Results[search.ProductDoc]{
 		Total: 1,
 		Hits: []search.Hit[search.ProductDoc]{{
@@ -175,7 +179,7 @@ func TestAHitCarriesTheSharedMoneyType(t *testing.T) {
 }
 
 func TestFacetsCrossTheWire(t *testing.T) {
-	server, searcher := newServer(t, noon, time.Minute)
+	server, searcher := newServer(t, noon, noon, time.Minute)
 	searcher.Results = search.Results[search.ProductDoc]{
 		Facets: map[string][]search.FacetValue{
 			"categories": {{Value: "sepatu", Count: 4}},
@@ -194,7 +198,7 @@ func TestFacetsCrossTheWire(t *testing.T) {
 }
 
 func TestSuggestAnswersAnEmptyListRatherThanNil(t *testing.T) {
-	server, _ := newServer(t, noon, time.Minute)
+	server, _ := newServer(t, noon, noon, time.Minute)
 
 	response, err := server.SuggestProducts(
 		context.Background(),

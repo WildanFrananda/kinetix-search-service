@@ -21,13 +21,13 @@ func NewCheckpoint(pool *pgxpool.Pool) *Checkpoint {
 	return &Checkpoint{q: New(pool)}
 }
 
-func (c *Checkpoint) Load(ctx context.Context, col search.Collection) (search.Cursor, error) {
+func (c *Checkpoint) Load(ctx context.Context, col search.Collection) (search.Progress, error) {
 	row, err := c.q.LoadCheckpoint(ctx, string(col))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return search.Cursor{}, nil
+		return search.Progress{}, nil
 	}
 	if err != nil {
-		return search.Cursor{}, search.Errf(
+		return search.Progress{}, search.Errf(
 			search.KindDependencyUnavailable,
 			"postgres.LoadCheckpoint",
 			err,
@@ -36,11 +36,17 @@ func (c *Checkpoint) Load(ctx context.Context, col search.Collection) (search.Cu
 		)
 	}
 
-	cursor := search.Cursor{LastID: row.LastID}
+	progress := search.Progress{Cursor: search.Cursor{LastID: row.LastID}}
+
 	if row.UpdatedThrough.Valid {
-		cursor.UpdatedThrough = row.UpdatedThrough.Time.UTC()
+		progress.Cursor.UpdatedThrough = row.UpdatedThrough.Time.UTC()
 	}
-	return cursor, nil
+
+	if row.SavedAt.Valid {
+		progress.SavedAt = row.SavedAt.Time.UTC()
+	}
+
+	return progress, nil
 }
 
 func (c *Checkpoint) Save(ctx context.Context, col search.Collection, cur search.Cursor) error {

@@ -37,14 +37,18 @@ func (c FixedClock) Now() time.Time {
 
 type FakeCheckpoint struct {
 	Cursors map[search.Collection]search.Cursor
+	SavedAt map[search.Collection]time.Time
 	Err     error
 	Saved   []search.Cursor
 }
 
 var _ search.Checkpoint = (*FakeCheckpoint)(nil)
 
-func (f *FakeCheckpoint) Load(_ context.Context, c search.Collection) (search.Cursor, error) {
-	return f.Cursors[c], f.Err
+func (f *FakeCheckpoint) Load(
+	_ context.Context,
+	c search.Collection,
+) (search.Progress, error) {
+	return search.Progress{Cursor: f.Cursors[c], SavedAt: f.SavedAt[c]}, f.Err
 }
 
 func (f *FakeCheckpoint) Save(_ context.Context, c search.Collection, cur search.Cursor) error {

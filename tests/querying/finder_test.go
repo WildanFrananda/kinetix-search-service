@@ -19,9 +19,12 @@ func productFinder(s *searchtest.FakeSearcher[search.ProductDoc], c *searchtest.
 }
 
 func TestFindReportsFreshness(t *testing.T) {
-	cp := &searchtest.FakeCheckpoint{Cursors: map[search.Collection]search.Cursor{
-		search.Products: {UpdatedThrough: noon.Add(-2 * time.Minute)},
-	}}
+	cp := &searchtest.FakeCheckpoint{
+		Cursors: map[search.Collection]search.Cursor{
+			search.Products: {UpdatedThrough: noon.Add(-2 * time.Minute)},
+		},
+		SavedAt: map[search.Collection]time.Time{search.Products: noon.Add(-2 * time.Minute)},
+	}
 	f := productFinder(&searchtest.FakeSearcher[search.ProductDoc]{Results: search.Results[search.ProductDoc]{Total: 3}}, cp, 10*time.Minute)
 
 	q, err := search.NewQuery("sepatu")
@@ -34,9 +37,12 @@ func TestFindReportsFreshness(t *testing.T) {
 }
 
 func TestFindMarksAnOldIndexStale(t *testing.T) {
-	cp := &searchtest.FakeCheckpoint{Cursors: map[search.Collection]search.Cursor{
-		search.Products: {UpdatedThrough: noon.Add(-2 * time.Hour)},
-	}}
+	cp := &searchtest.FakeCheckpoint{
+		Cursors: map[search.Collection]search.Cursor{
+			search.Products: {UpdatedThrough: noon.Add(-2 * time.Hour)},
+		},
+		SavedAt: map[search.Collection]time.Time{search.Products: noon.Add(-2 * time.Hour)},
+	}
 	f := productFinder(&searchtest.FakeSearcher[search.ProductDoc]{}, cp, 10*time.Minute)
 
 	q, _ := search.NewQuery("sepatu")
@@ -95,4 +101,44 @@ func TestSealedIdentifierRefusesRubbish(t *testing.T) {
 	require.Error(t, err)
 	_, err = search.NewProductID("id\x1b[31m")
 	require.Error(t, err)
+}
+
+func TestAnIndexNobodyHasChangedIsNotStale(t *testing.T) {
+	cp := &searchtest.FakeCheckpoint{
+		Cursors: map[search.Collection]search.Cursor{
+			search.Products: {UpdatedThrough: noon.Add(-7 * 24 * time.Hour)},
+		},
+		SavedAt: map[search.Collection]time.Time{search.Products: noon.Add(-20 * time.Second)},
+	}
+	f := productFinder(&searchtest.FakeSearcher[search.ProductDoc]{}, cp, 10*time.Minute)
+
+	q, err := search.NewQuery("sepatu")
+	require.NoError(t, err)
+
+	results, err := f.Find(context.Background(), q)
+
+	require.NoError(t, err)
+	require.False(t, results.Freshness.Stale,
+		"a catalogue nobody edits is not an index nobody syncs")
+	require.Equal(t, 20*time.Second, results.Freshness.Age)
+	require.Equal(t, noon.Add(-7*24*time.Hour), results.Freshness.IndexedThrough,
+		"the walk's own watermark is still reported, it just does not decide staleness")
+}
+
+func TestAnIndexNobodyHasSyncedIsStale(t *testing.T) {
+	cp := &searchtest.FakeCheckpoint{
+		Cursors: map[search.Collection]search.Cursor{
+			search.Products: {UpdatedThrough: noon.Add(-time.Minute)},
+		},
+		SavedAt: map[search.Collection]time.Time{search.Products: noon.Add(-2 * time.Hour)},
+	}
+	f := productFinder(&searchtest.FakeSearcher[search.ProductDoc]{}, cp, 10*time.Minute)
+
+	q, err := search.NewQuery("sepatu")
+	require.NoError(t, err)
+
+	results, err := f.Find(context.Background(), q)
+
+	require.NoError(t, err)
+	require.True(t, results.Freshness.Stale)
 }

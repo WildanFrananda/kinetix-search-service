@@ -31,12 +31,15 @@ type harness struct {
 	ready    error
 }
 
-func newHarness(t *testing.T, indexedThrough time.Time, staleAfter time.Duration) *harness {
+func newHarness(t *testing.T, indexedThrough, syncedAt time.Time, staleAfter time.Duration) *harness {
 	t.Helper()
 	h := &harness{searcher: &searchtest.FakeSearcher[search.ProductDoc]{}}
-	checkpoint := &searchtest.FakeCheckpoint{Cursors: map[search.Collection]search.Cursor{
-		search.Products: {UpdatedThrough: indexedThrough},
-	}}
+	checkpoint := &searchtest.FakeCheckpoint{
+		Cursors: map[search.Collection]search.Cursor{
+			search.Products: {UpdatedThrough: indexedThrough},
+		},
+		SavedAt: map[search.Collection]time.Time{search.Products: syncedAt},
+	}
 	finder := querying.NewFinder(
 		search.Products,
 		h.searcher,
@@ -61,7 +64,7 @@ func (h *harness) get(t *testing.T, target string) (*httptest.ResponseRecorder, 
 }
 
 func TestASearchCarriesItsOwnFreshness(t *testing.T) {
-	h := newHarness(t, noon.Add(-2*time.Minute), 10*time.Minute)
+	h := newHarness(t, noon.Add(-2*time.Minute), noon.Add(-2*time.Minute), 10*time.Minute)
 	h.searcher.Results = search.Results[search.ProductDoc]{
 		Total: 1,
 		Hits: []search.Hit[search.ProductDoc]{{
@@ -83,7 +86,7 @@ func TestASearchCarriesItsOwnFreshness(t *testing.T) {
 }
 
 func TestAStaleIndexSaysSoInsteadOfLookingComplete(t *testing.T) {
-	h := newHarness(t, noon.Add(-2*time.Hour), 10*time.Minute)
+	h := newHarness(t, noon.Add(-2*time.Hour), noon.Add(-2*time.Hour), 10*time.Minute)
 
 	_, body := h.get(t, "/api/v1/products/search?q=sepatu")
 
@@ -93,7 +96,7 @@ func TestAStaleIndexSaysSoInsteadOfLookingComplete(t *testing.T) {
 }
 
 func TestAnOutageIsNotAnEmptyShop(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 	h.searcher.Err = search.Errf(
 		search.KindIndexUnavailable,
 		"typesense.Search",
@@ -113,7 +116,7 @@ func TestAnOutageIsNotAnEmptyShop(t *testing.T) {
 }
 
 func TestAMalformedQueryIsTheCallersFault(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 
 	rec, body := h.get(t, "/api/v1/products/search?q=sepatu%1b%5b31m")
 
@@ -122,7 +125,7 @@ func TestAMalformedQueryIsTheCallersFault(t *testing.T) {
 }
 
 func TestQueryParametersReachTheUseCase(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 
 	_, _ = h.get(t,
 		"/api/v1/products/search?q=sepatu&limit=5&offset=10&sort=price_asc&category=sepatu&category=sandal")
@@ -137,7 +140,7 @@ func TestQueryParametersReachTheUseCase(t *testing.T) {
 }
 
 func TestARubbishLimitDoesNotRefuseTheSearch(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 
 	rec, _ := h.get(t, "/api/v1/products/search?q=sepatu&limit=banyak&offset=-3")
 
@@ -147,7 +150,7 @@ func TestARubbishLimitDoesNotRefuseTheSearch(t *testing.T) {
 }
 
 func TestAnEmptyQueryIsBrowsing(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 
 	rec, _ := h.get(t, "/api/v1/products/search?category=sepatu")
 
@@ -156,7 +159,7 @@ func TestAnEmptyQueryIsBrowsing(t *testing.T) {
 }
 
 func TestHitsCarryThePriceExactly(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 	h.searcher.Results = search.Results[search.ProductDoc]{
 		Total: 1,
 		Hits: []search.Hit[search.ProductDoc]{{
@@ -178,7 +181,7 @@ func TestHitsCarryThePriceExactly(t *testing.T) {
 }
 
 func TestSuggestReturnsAnArrayRatherThanNull(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 
 	rec, body := h.get(t, "/api/v1/products/suggest?q=sep")
 
@@ -188,7 +191,7 @@ func TestSuggestReturnsAnArrayRatherThanNull(t *testing.T) {
 }
 
 func TestSuggestWithNoPrefixAsksNothing(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 
 	rec, _ := h.get(t, "/api/v1/products/suggest")
 
@@ -197,7 +200,7 @@ func TestSuggestWithNoPrefixAsksNothing(t *testing.T) {
 }
 
 func TestReadinessRefusesBeforeAnythingIsIndexed(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 	h.ready = search.Errf(
 		search.KindIndexUnavailable,
 		"searchd.ready",
@@ -217,7 +220,7 @@ func TestReadinessRefusesBeforeAnythingIsIndexed(t *testing.T) {
 }
 
 func TestLivenessDoesNotDependOnAnybodyElse(t *testing.T) {
-	h := newHarness(t, noon, time.Minute)
+	h := newHarness(t, noon, noon, time.Minute)
 	h.ready = search.Errf(search.KindDependencyUnavailable, "searchd.ready", nil, "database down")
 
 	rec, _ := h.get(t, "/health/live")
