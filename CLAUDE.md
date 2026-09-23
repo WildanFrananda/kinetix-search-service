@@ -169,6 +169,15 @@ generation has been promoted, so `docker compose run --rm kinetix-search-reindex
 the container healthy the first time. That is the readiness check doing its job — a search service
 that calls itself ready with no index answers every query "no products".
 
+A third trap, found only in production: **never set `ServerName` on the credentials' tls.Config.**
+grpc-go overwrites it from the `:authority` at handshake time, so it verifies nothing — and a
+non-empty ServerName *becomes* the authority, which carries no port. order maps its gRPC route with
+`RequireHost("*:50055")`, so a portless authority matched no endpoint and ASP.NET answered a plain
+404 (`Unimplemented … unexpected HTTP status code received from server: 404`). catalog and identity
+impose no host filter, so products and merchants synced while orders did not — a half-filled index
+that looked like it worked. `mesh.MutualTLS` now leaves ServerName unset and asserts instead that
+the endpoint's host is the name the caller expects.
+
 Two traps the image found, both invisible on a laptop:
 
 - **Debian's protoc is 3.21.12 and does not bundle the well-known types.** Homebrew's does, so
