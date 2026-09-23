@@ -52,10 +52,9 @@ func run(log *slog.Logger) error {
 	defer pool.Close()
 
 	catalog, err := catalogclient.Dial(mesh.Settings{
-		Endpoint:   cfg.CatalogEndpoint,
-		PKIDir:     cfg.PKIDir,
-		ServerName: cfg.CatalogServerName,
-		Deadline:   cfg.CatalogDeadline,
+		Endpoint: cfg.CatalogEndpoint,
+		PKIDir:   cfg.PKIDir,
+		Deadline: cfg.CatalogDeadline,
 	})
 	if err != nil {
 		return err
@@ -63,10 +62,9 @@ func run(log *slog.Logger) error {
 	defer func() { _ = catalog.Close() }()
 
 	identity, err := identityclient.Dial(mesh.Settings{
-		Endpoint:   cfg.IdentityEndpoint,
-		PKIDir:     cfg.PKIDir,
-		ServerName: cfg.IdentityServerName,
-		Deadline:   cfg.IdentityDeadline,
+		Endpoint: cfg.IdentityEndpoint,
+		PKIDir:   cfg.PKIDir,
+		Deadline: cfg.IdentityDeadline,
 	})
 	if err != nil {
 		return err
@@ -76,10 +74,9 @@ func run(log *slog.Logger) error {
 	}()
 
 	orders, err := orderclient.Dial(mesh.Settings{
-		Endpoint:   cfg.OrderEndpoint,
-		PKIDir:     cfg.PKIDir,
-		ServerName: cfg.OrderServerName,
-		Deadline:   cfg.OrderDeadline,
+		Endpoint: cfg.OrderEndpoint,
+		PKIDir:   cfg.PKIDir,
+		Deadline: cfg.OrderDeadline,
 	})
 	if err != nil {
 		return err

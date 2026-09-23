@@ -82,7 +82,6 @@ func TestTimeoutsAndSizesHaveSensibleDefaults(t *testing.T) {
 	require.Equal(t, 10*time.Minute, cfg.StaleAfter)
 	require.Equal(t, 10*time.Second, cfg.CatalogDeadline)
 	require.Equal(t, 200, cfg.SyncPageSize)
-	require.Equal(t, "kinetix-catalog-service", cfg.CatalogServerName)
 }
 
 func TestDurationsAreReadInMilliseconds(t *testing.T) {

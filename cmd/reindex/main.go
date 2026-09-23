@@ -123,10 +123,9 @@ func rebuild(
 	switch collection {
 	case search.Products:
 		source, err := catalogclient.Dial(mesh.Settings{
-			Endpoint:   cfg.CatalogEndpoint,
-			PKIDir:     cfg.PKIDir,
-			ServerName: cfg.CatalogServerName,
-			Deadline:   cfg.CatalogDeadline,
+			Endpoint: cfg.CatalogEndpoint,
+			PKIDir:   cfg.PKIDir,
+			Deadline: cfg.CatalogDeadline,
 		})
 		if err != nil {
 			return err
@@ -145,10 +144,9 @@ func rebuild(
 
 	case search.Merchants:
 		source, err := identityclient.Dial(mesh.Settings{
-			Endpoint:   cfg.IdentityEndpoint,
-			PKIDir:     cfg.PKIDir,
-			ServerName: cfg.IdentityServerName,
-			Deadline:   cfg.IdentityDeadline,
+			Endpoint: cfg.IdentityEndpoint,
+			PKIDir:   cfg.PKIDir,
+			Deadline: cfg.IdentityDeadline,
 		})
 		if err != nil {
 			return err
@@ -169,10 +167,9 @@ func rebuild(
 
 	case search.Orders:
 		source, err := orderclient.Dial(mesh.Settings{
-			Endpoint:   cfg.OrderEndpoint,
-			PKIDir:     cfg.PKIDir,
-			ServerName: cfg.OrderServerName,
-			Deadline:   cfg.OrderDeadline,
+			Endpoint: cfg.OrderEndpoint,
+			PKIDir:   cfg.PKIDir,
+			Deadline: cfg.OrderDeadline,
 		})
 		if err != nil {
 			return err
