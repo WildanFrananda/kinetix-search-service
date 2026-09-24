@@ -20,6 +20,7 @@ type Config struct {
 	OrderEndpoint    string
 	OrderDeadline    time.Duration
 	PKIDir           string
+	AllowedPeers     string
 	HTTPAddr         string
 	GRPCAddr         string
 	SyncInterval     time.Duration
@@ -38,6 +39,7 @@ func FromEnvironment() (Config, error) {
 		IdentityEndpoint: required("SEARCH_IDENTITY_ENDPOINT", &missing),
 		OrderEndpoint:    required("SEARCH_ORDER_ENDPOINT", &missing),
 		PKIDir:           required("KINETIX_PKI_DIR", &missing),
+		AllowedPeers:     optional("KINETIX_GRPC_ALLOWED_PEERS", ""),
 		HTTPAddr:         optional("SEARCH_HTTP_ADDR", ":8088"),
 		GRPCAddr:         optional("SEARCH_GRPC_ADDR", ":50058"),
 		TypesenseTimeout: duration("SEARCH_TYPESENSE_TIMEOUT_MS", 5*time.Second),

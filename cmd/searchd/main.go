@@ -150,7 +150,10 @@ func startGRPC(
 		)
 	}
 
-	server := grpc.NewServer(grpc.Creds(creds))
+	server := grpc.NewServer(
+		grpc.Creds(creds),
+		grpc.UnaryInterceptor(grpcapi.Authorize(grpcapi.AllowedPeers(cfg.AllowedPeers))),
+	)
 	searchv1.RegisterSearchServiceServer(server, grpcapi.NewServer(products))
 
 	checker := health.NewServer()
