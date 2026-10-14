@@ -12,6 +12,7 @@ type Syncer[D any] struct {
 	source     search.Source[D]
 	index      search.Index[D]
 	checkpoint search.Checkpoint
+	lock       search.Lock
 	log        *slog.Logger
 	pageSize   int
 }
@@ -21,6 +22,7 @@ func NewSyncer[D any](
 	source search.Source[D],
 	index search.Index[D],
 	checkpoint search.Checkpoint,
+	lock search.Lock,
 	log *slog.Logger,
 	pageSize int,
 ) *Syncer[D] {
@@ -29,12 +31,19 @@ func NewSyncer[D any](
 		source:     source,
 		index:      index,
 		checkpoint: checkpoint,
+		lock:       lock,
 		log:        log,
 		pageSize:   pageSize,
 	}
 }
 
 func (s *Syncer[D]) Once(ctx context.Context) error {
+	release, err := s.lock.Hold(ctx, s.collection)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	progress, err := s.checkpoint.Load(ctx, s.collection)
 	if err != nil {
 		return err
@@ -52,6 +61,8 @@ func (s *Syncer[D]) Once(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
+		logRefusals(ctx, s.log, s.collection, changes.Refused)
 
 		if len(changes.Upserted) > 0 {
 			if err := s.index.Bulk(ctx, gen, changes.Upserted); err != nil {
@@ -78,6 +89,8 @@ func (s *Syncer[D]) Once(ctx context.Context) error {
 			len(changes.Upserted),
 			"removed",
 			len(changes.Removed),
+			"refused",
+			len(changes.Refused),
 			"through",
 			changes.Next.UpdatedThrough,
 		)

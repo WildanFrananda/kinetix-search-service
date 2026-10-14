@@ -5,8 +5,10 @@ go 1.26.4
 require (
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/pressly/goose/v3 v3.28.0
 	github.com/stretchr/testify v1.12.1
 	github.com/typesense/typesense-go/v3 v3.2.0
+	go.uber.org/dig v1.19.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )
@@ -19,7 +21,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/oapi-codegen/runtime v1.1.1 // indirect
-	github.com/pressly/goose/v3 v3.28.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	github.com/sony/gobreaker v1.0.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

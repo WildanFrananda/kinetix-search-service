@@ -17,3 +17,6 @@ ON CONFLICT (collection, name) DO UPDATE SET documents = EXCLUDED.documents;
 -- name: MarkGenerationPromoted :exec
 UPDATE index_generation SET promoted_at = now()
 WHERE collection = $1 AND name = $2;
+
+-- name: HoldCollection :exec
+SELECT pg_advisory_xact_lock(hashtext('kinetix-search.collection'), hashtext(sqlc.arg(collection)::text));

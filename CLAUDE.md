@@ -38,12 +38,14 @@ internal/catalogclient/ internal/identityclient/ internal/orderclient/   adapter
 internal/grpcapi/ internal/httpapi/                                      adapters → the edge
 internal/typesense/      adapter → Typesense: schema, encode/decode, filters, alias swap
 internal/config/        environment reading
+internal/wiring/        the dig providers; the only package besides cmd/ that imports dig
 
 tests/search/           tests for internal/search
 tests/querying/         tests for internal/querying
 tests/indexing/         tests for internal/indexing
 tests/typesense/        tests for the adapter's pure parts
 tests/integration/      the only tests that talk to a real engine
+tests/wiring/           resolves every dig graph, so wrong wiring fails here and not at start-up
 tests/searchtest/       hand-written fakes
 ```
 
@@ -99,6 +101,8 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 - **`golangci-lint`** with errcheck, errorlint, contextcheck and gosec among others. Verified to
   fire rather than merely report zero: an ignored `checkpoint.Save` is caught by errcheck.
 - **`gofmt` and `goimports`.** Not negotiable in Go, and that is a feature.
+- **`bin/check-boundaries`** fails when anything outside `cmd/` and `internal/wiring` imports dig.
+  Controlled both ways: a dig import in `internal/system` fails it.
 - **`bin/test`** runs the suite with the coverage flags the `tests/` layout requires.
 
 ## Conventions
@@ -106,9 +110,15 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 - **Errors:** every error out of the core is built with `search.Errf` and carries a `Kind`. Read it
   back with `search.KindOf`, which survives wrapping. Only an adapter turns a Kind into an HTTP
   status or a gRPC code. An error from outside this service has no Kind and must not be given one.
-- **DI:** manual constructor injection, wired in `cmd/*/main.go`. No service locator, no global
-  singleton, no reflection container. `google/wire` is the escalation if wiring grows — it is code
-  generation, so wrong wiring stays a compile error.
+- **DI:** `go.uber.org/dig`, as in the notary. Every provider lives in `internal/wiring`, takes one
+  `dig.In` struct and returns a value or a `dig.Out` struct; a `dig.Out` field typed as a port
+  (`search.Checkpoint`, `search.Source[D]`) stands where `dig.As` would. Constructors everywhere else
+  stay plain functions, so adapters are tested without a container. `wiring.Searchd` and
+  `wiring.Indexing` build the graphs; `cmd/searchd` and `cmd/syncd` invoke one `dig.In` struct each,
+  and `cmd/reindex` invokes one collection at a time, so reindexing products dials catalog and
+  nothing else. dig resolves at start-up, not at compile time, which is why `tests/wiring` resolves
+  every graph, and a failure is reported through `dig.RootCause` so its Kind survives. `cmd/migrate`
+  has nothing to inject and stays plain.
 - **Testing:** hand-written fakes in `tests/searchtest`, not a mocking framework. A fake that
   returns what the test set and records what it was asked is shorter to read than a stack of
   expectations.
@@ -121,10 +131,13 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 - **Three collections, three document types** — `ProductDoc`, `MerchantDoc`, `OrderDoc`. They are
   ranked by different rules, filtered on different fields, and one of them is private.
 
-- **Orders are private, in three layers.** The use case refuses an `Orders` query with no
-  `OnBehalfOf`; `ForPrincipal` is a method rather than a `QueryOption`, so a handler cannot let a
-  query parameter set it; and the Typesense adapter uses a scoped search key with the principal
-  filter baked in. `OrderDoc` carries no address, no total and no payment detail.
+- **Orders are private.** Today no edge serves them at all: searchd builds a `Finder` for products
+  only, and neither the HTTP router nor the gRPC server names orders or merchants. When an edge is
+  added, two layers are already in place: the use case refuses an `Orders` query with no
+  `OnBehalfOf`, and `ForPrincipal` is a method rather than a `QueryOption`, so a handler cannot let
+  a query parameter set it. A scoped Typesense key with the principal baked in was planned as a
+  third layer and does not exist; this file claimed it did until 2026-10-14. `OrderDoc` carries no
+  address, no total and no payment detail.
 
 - **A failed search is a failure, never an empty result set.** A shop that answers "no products"
   during an outage teaches its customers the shop is empty. This is the estate's house failure
@@ -148,6 +161,23 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 
 - **Tombstones are explicit.** A record missing from a page could be a deletion or a paging bug,
   and a service that guesses will quietly empty its own index.
+
+- **A sync pass and a reindex's promotion never overlap.** `search.Lock` is a Postgres advisory lock
+  per collection, taken with `pg_advisory_xact_lock` inside a transaction, so it is released when the
+  transaction ends or the session dies — a crashed holder cannot keep a collection for ever. A sync
+  pass holds it for the whole pass; a reindex holds it only to promote and save its cursor, so sync
+  keeps running during the walk. Until 2026-10-14 there was no lock: a pass that read the old
+  generation could write into it after the promotion and save a cursor past the reindex's, and
+  everything between the two — a deactivated product's tombstone included — was never written to the
+  live generation.
+
+- **One bad record is refused, not allowed to stop the feed.** A record a client cannot convert (an
+  order with no buyer, a product with no usable SKU, a merchant with no principal) goes into
+  `Changes.Refused`; the rest of the page is written, the cursor moves past it, and syncd logs it at
+  ERROR with its id. Until 2026-10-14 the whole page failed instead, and because the cursor never
+  moved, every pass failed on the same record and the collection stopped syncing for good. A reindex
+  subtracts refused records from the source's count, or catalog's count of a record nobody can index
+  would block every promotion.
 
 - **`PriceMinor` is carried for sorting and range filters only.** It is catalog's list price at
   indexing time and is never presented as the price a customer pays — that is pricing's answer, at
@@ -205,10 +235,9 @@ Two traps the image found, both invisible on a laptop:
 - **Typesense will not create its `--data-dir`.** The compose entry mounts `typesense_data:/data`,
   and without it the container exits rather than starting empty.
 
-Still not built: the storefront has no gateway route to `/api/v1/products/search` — the HTTP edge
-is reachable from inside the mesh and from nowhere else — and production carries no image digest
-for this service yet, so `docker compose config` refuses to render prod until the first
-`build-and-push` fills `deploy/prod/versions.env`.
+Kong routes `/api/v1/products/search` and `/api/v1/products/suggest` to searchd, so the product
+search is public. Nothing may call the gRPC surface yet: `KINETIX_GRPC_ALLOWED_PEERS` is empty in
+compose, and an empty list permits nobody.
 
 All four contract changes are published: `catalog/v1` with `ChangedSince` (and catalog's first gRPC
 server), `search/v1`, `identity.v1.MerchantsChangedSince` and `order.v1.OrdersChangedSince`, pinned

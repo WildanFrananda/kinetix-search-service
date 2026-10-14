@@ -10,21 +10,27 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-search-service/internal/catalogclient"
 	"github.com/WildanFrananda/kinetix-search-service/internal/config"
 	"github.com/WildanFrananda/kinetix-search-service/internal/identityclient"
 	"github.com/WildanFrananda/kinetix-search-service/internal/indexing"
-	"github.com/WildanFrananda/kinetix-search-service/internal/mesh"
 	"github.com/WildanFrananda/kinetix-search-service/internal/orderclient"
-	"github.com/WildanFrananda/kinetix-search-service/internal/postgres"
 	"github.com/WildanFrananda/kinetix-search-service/internal/search"
-	"github.com/WildanFrananda/kinetix-search-service/internal/typesense"
+	"github.com/WildanFrananda/kinetix-search-service/internal/wiring"
 )
 
-type collectionSync struct {
-	collection search.Collection
-	once       func(context.Context) error
+type syncd struct {
+	dig.In
+	Config    config.Config
+	Pool      *pgxpool.Pool
+	Catalog   *catalogclient.Client
+	Identity  *identityclient.Client
+	Orders    *orderclient.Client
+	Products  *indexing.Syncer[search.ProductDoc]
+	Merchants *indexing.Syncer[search.MerchantDoc]
+	Placed    *indexing.Syncer[search.OrderDoc]
 }
 
 func main() {
@@ -37,99 +43,52 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
-	cfg, err := config.FromEnvironment()
-	if err != nil {
-		return err
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return search.Errf(search.KindDependencyUnavailable, "syncd.database", err, "connecting")
-	}
-	defer pool.Close()
-
-	catalog, err := catalogclient.Dial(mesh.Settings{
-		Endpoint: cfg.CatalogEndpoint,
-		PKIDir:   cfg.PKIDir,
-		Deadline: cfg.CatalogDeadline,
-	})
+	container, err := wiring.Indexing(log)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = catalog.Close() }()
 
-	identity, err := identityclient.Dial(mesh.Settings{
-		Endpoint: cfg.IdentityEndpoint,
-		PKIDir:   cfg.PKIDir,
-		Deadline: cfg.IdentityDeadline,
+	err = container.Invoke(func(d syncd) error {
+		defer d.Pool.Close()
+		defer func() {
+			_ = d.Catalog.Close()
+		}()
+		defer func() {
+			_ = d.Identity.Close()
+		}()
+		defer func() {
+			_ = d.Orders.Close()
+		}()
+
+		return loop(ctx, log, d)
 	})
 	if err != nil {
-		return err
+		return dig.RootCause(err)
 	}
-	defer func() {
-		_ = identity.Close()
-	}()
 
-	orders, err := orderclient.Dial(mesh.Settings{
-		Endpoint: cfg.OrderEndpoint,
-		PKIDir:   cfg.PKIDir,
-		Deadline: cfg.OrderDeadline,
-	})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = orders.Close()
-	}()
+	return nil
+}
 
-	engine := typesense.Connect(typesense.Settings{
-		URL:     cfg.TypesenseURL,
-		APIKey:  cfg.TypesenseAPIKey,
-		Timeout: cfg.TypesenseTimeout,
-	})
-
-	checkpoint := postgres.NewCheckpoint(pool)
-
-	products := indexing.NewSyncer(
-		search.Products,
-		catalog,
-		typesense.NewIndex(engine, search.Products, typesense.EncodeProduct),
-		checkpoint,
-		log,
-		cfg.SyncPageSize,
-	)
-
-	merchants := indexing.NewSyncer(
-		search.Merchants,
-		identity,
-		typesense.NewIndex(engine, search.Merchants, typesense.EncodeMerchant),
-		checkpoint,
-		log,
-		cfg.SyncPageSize,
-	)
-
-	placed := indexing.NewSyncer(
-		search.Orders,
-		orders,
-		typesense.NewIndex(engine, search.Orders, typesense.EncodeOrder),
-		checkpoint,
-		log,
-		cfg.SyncPageSize,
-	)
-
+func loop(ctx context.Context, log *slog.Logger, d syncd) error {
 	runs := []collectionSync{
-		{search.Products, products.Once},
-		{search.Merchants, merchants.Once},
-		{search.Orders, placed.Once},
+		{search.Products, d.Products.Once},
+		{search.Merchants, d.Merchants.Once},
+		{search.Orders, d.Placed.Once},
 	}
 
-	log.InfoContext(ctx, "syncd started",
-		"collections", len(runs), "interval", cfg.SyncInterval.String())
+	log.InfoContext(
+		ctx,
+		"syncd started",
+		"collections",
+		len(runs),
+		"interval",
+		d.Config.SyncInterval.String(),
+	)
 
-	ticker := time.NewTicker(cfg.SyncInterval)
+	ticker := time.NewTicker(d.Config.SyncInterval)
 	defer ticker.Stop()
 
 	for {
@@ -157,7 +116,14 @@ func runOnce(ctx context.Context, r collectionSync, log *slog.Logger) {
 		return
 	}
 
-	log.ErrorContext(ctx, "sync run failed; the cursor has not moved and the index is now older",
-		"collection", string(r.collection),
-		"err", err, "kind", search.KindOf(err).String())
+	log.ErrorContext(
+		ctx,
+		"sync run failed; the cursor has not moved and the index is now older",
+		"collection",
+		string(r.collection),
+		"err",
+		err,
+		"kind",
+		search.KindOf(err).String(),
+	)
 }

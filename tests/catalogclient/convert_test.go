@@ -98,3 +98,24 @@ func TestAMissingCursorReadsAsTheBeginning(t *testing.T) {
 	require.True(t, back.UpdatedThrough.IsZero())
 	require.Empty(t, back.LastID)
 }
+
+func TestAPageKeepsItsGoodProductsAndNamesTheOneItRefused(t *testing.T) {
+	changes := catalogclient.ToChanges(&catalogv1.ChangedSinceResponse{
+		Upserted: []*catalogv1.Product{
+			{Sku: "SHOE-1", Price: &commonv1.Money{Currency: "IDR"}},
+			{Sku: "   ", Price: &commonv1.Money{Currency: "IDR"}},
+			{Sku: "SHOE-3", Price: &commonv1.Money{Currency: "IDR"}},
+		},
+		RemovedSkus: []string{"SHOE-9"},
+		Next:        &catalogv1.Cursor{UpdatedThrough: timestamppb.New(noon), LastSku: "SHOE-3"},
+	})
+
+	require.Len(t, changes.Upserted, 2)
+	require.Equal(t, "SHOE-1", changes.Upserted[0].ID.String())
+	require.Equal(t, "SHOE-3", changes.Upserted[1].ID.String())
+	require.Equal(t, []string{"SHOE-9"}, changes.Removed, "a refusal must not cost the page its tombstones")
+	require.Len(t, changes.Refused, 1)
+	require.Equal(t, "   ", changes.Refused[0].ID)
+	require.Equal(t, search.KindCorruptRecord, search.KindOf(changes.Refused[0].Reason))
+	require.Equal(t, search.Cursor{UpdatedThrough: noon, LastID: "SHOE-3"}, changes.Next)
+}

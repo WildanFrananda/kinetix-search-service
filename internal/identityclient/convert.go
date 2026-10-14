@@ -33,6 +33,31 @@ func FromProtoCursor(c *identityv1.MerchantCursor) search.Cursor {
 	return out
 }
 
+func ToChanges(response *identityv1.MerchantsChangedSinceResponse) search.Changes[search.MerchantDoc] {
+	changes := search.Changes[search.MerchantDoc]{
+		Upserted: make([]search.MerchantDoc, 0, len(response.GetUpserted())),
+		Removed:  response.GetRemovedPrincipalIds(),
+		Next:     FromProtoCursor(response.GetNext()),
+		HasMore:  response.GetHasMore(),
+	}
+
+	for _, m := range response.GetUpserted() {
+		doc, err := ToDoc(m)
+
+		if err != nil {
+			changes.Refused = append(
+				changes.Refused,
+				search.Refusal{ID: m.GetPrincipalId(), Reason: err},
+			)
+			continue
+		}
+
+		changes.Upserted = append(changes.Upserted, doc)
+	}
+
+	return changes
+}
+
 func ToDoc(m *identityv1.MerchantRecord) (search.MerchantDoc, error) {
 	id, err := search.NewMerchantID(m.GetPrincipalId())
 

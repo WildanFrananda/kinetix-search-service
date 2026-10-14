@@ -49,8 +49,10 @@ func TestASourceThatCannotCountIsStillReindexed(t *testing.T) {
 		twoMerchants(t),
 		index,
 		checkpoint,
+		&searchtest.FakeLock{},
 		searchtest.FixedClock{At: noon},
-		discard, 100,
+		discard,
+		100,
 	)
 
 	require.NoError(t, r.Run(context.Background()))
@@ -71,8 +73,10 @@ func TestAnUncountableSourceIsStillCheckedAgainstWhatTheWalkSent(t *testing.T) {
 		twoMerchants(t),
 		index,
 		checkpoint,
+		&searchtest.FakeLock{},
 		searchtest.FixedClock{At: noon},
-		discard, 100,
+		discard,
+		100,
 	)
 
 	err := r.Run(context.Background())

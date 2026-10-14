@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+MODULE="$(go list -m)"
+
+offenders="$(
+  go list -f '{{.ImportPath}}{{range .Imports}} {{.}}{{end}}' ./cmd/... ./internal/... \
+    | awk '{ for (i = 2; i <= NF; i++) if ($i == "go.uber.org/dig") { print $1; break } }' \
+    | grep -v -e "^$MODULE/cmd/" -e "^$MODULE/internal/wiring$" \
+    || true
+)"
+
+if [ -n "$offenders" ]; then
+  echo "dig belongs to the composition root (cmd/ and internal/wiring), but these import it:"
+  echo "$offenders" | sed 's/^/  /'
+  exit 1
+fi
+
+echo "dig stays in the composition root: cmd/ and internal/wiring"

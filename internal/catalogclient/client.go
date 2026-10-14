@@ -72,21 +72,7 @@ func (c *Client) ChangedSince(
 		)
 	}
 
-	upserted := make([]search.ProductDoc, 0, len(response.GetUpserted()))
-	for _, p := range response.GetUpserted() {
-		doc, convErr := ToDoc(p)
-		if convErr != nil {
-			return search.Changes[search.ProductDoc]{}, convErr
-		}
-		upserted = append(upserted, doc)
-	}
-
-	return search.Changes[search.ProductDoc]{
-		Upserted: upserted,
-		Removed:  response.GetRemovedSkus(),
-		Next:     FromProtoCursor(response.GetNext()),
-		HasMore:  response.GetHasMore(),
-	}, nil
+	return ToChanges(response), nil
 }
 
 func (c *Client) Count(ctx context.Context) (int64, error) {
