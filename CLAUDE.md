@@ -225,7 +225,7 @@ must equal a configured name was added and removed the same day: it refused
 `kinetix-catalog-grpc:50058` against a default of `kinetix-catalog-service` and crash-looped syncd
 in production.
 
-Two traps the image found, both invisible on a laptop:
+Three traps the image found, all invisible on a laptop:
 
 - **Debian's protoc is 3.21.12 and does not bundle the well-known types.** Homebrew's does, so
   `bin/sync-contracts` worked here and failed in the image with
@@ -234,6 +234,13 @@ Two traps the image found, both invisible on a laptop:
   `libprotobuf-dev` to put them there.
 - **Typesense will not create its `--data-dir`.** The compose entry mounts `typesense_data:/data`,
   and without it the container exits rather than starting empty.
+- **A base pinned by digest never receives Debian's security updates.** The merge build of 3dec6f5
+  (2026-10-14) failed its Trivy scan on three fixed CRITICALs, all `perl-base` at
+  `5.36.0-7+deb12u3`. The final stage now runs `apt-get upgrade` before `install`, as pricing,
+  notary, payment, review, matching and warehouse already do, and the image carries `deb12u4`. The
+  digest still decides the release; the upgrade only lets a fix in. Because the scan runs before the
+  push, no image exists for 3dec6f5, so a release tag on that commit fails at "no image" — tag the
+  merge that carries this fix instead.
 
 Kong routes `/api/v1/products/search` and `/api/v1/products/suggest` to searchd, so the product
 search is public. Nothing may call the gRPC surface yet: `KINETIX_GRPC_ALLOWED_PEERS` is empty in
