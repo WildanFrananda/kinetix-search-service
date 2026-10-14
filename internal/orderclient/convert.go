@@ -35,6 +35,30 @@ func FromProtoCursor(c *orderv1.OrderCursor) search.Cursor {
 	return out
 }
 
+func ToChanges(response *orderv1.OrdersChangedSinceResponse) search.Changes[search.OrderDoc] {
+	changes := search.Changes[search.OrderDoc]{
+		Upserted: make([]search.OrderDoc, 0, len(response.GetUpserted())),
+		Next:     FromProtoCursor(response.GetNext()),
+		HasMore:  response.GetHasMore(),
+	}
+
+	for _, o := range response.GetUpserted() {
+		doc, err := ToDoc(o)
+
+		if err != nil {
+			changes.Refused = append(
+				changes.Refused,
+				search.Refusal{ID: o.GetOrderNumber(), Reason: err},
+			)
+			continue
+		}
+
+		changes.Upserted = append(changes.Upserted, doc)
+	}
+
+	return changes
+}
+
 func ToDoc(o *orderv1.OrderRecord) (search.OrderDoc, error) {
 	id, err := search.NewOrderID(o.GetOrderNumber())
 

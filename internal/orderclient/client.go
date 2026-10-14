@@ -73,23 +73,7 @@ func (c *Client) ChangedSince(
 		)
 	}
 
-	upserted := make([]search.OrderDoc, 0, len(response.GetUpserted()))
-
-	for _, o := range response.GetUpserted() {
-		doc, convErr := ToDoc(o)
-
-		if convErr != nil {
-			return search.Changes[search.OrderDoc]{}, convErr
-		}
-
-		upserted = append(upserted, doc)
-	}
-
-	return search.Changes[search.OrderDoc]{
-		Upserted: upserted,
-		Next:     FromProtoCursor(response.GetNext()),
-		HasMore:  response.GetHasMore(),
-	}, nil
+	return ToChanges(response), nil
 }
 
 func fail(op string, err error, format string, args ...any) error {

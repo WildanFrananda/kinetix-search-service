@@ -114,3 +114,38 @@ func TestAMissingCursorReadsAsTheBeginning(t *testing.T) {
 	require.True(t, back.UpdatedThrough.IsZero())
 	require.Empty(t, back.LastID)
 }
+
+func TestAPageKeepsItsGoodOrdersAndNamesTheOneItRefused(t *testing.T) {
+	buyerless := anOrder()
+	buyerless.OrderNumber = "ORD-20260922-NOBUYER0"
+	buyerless.BuyerPrincipalId = ""
+
+	later := anOrder()
+	later.OrderNumber = "ORD-20260922-E5F6G7H8"
+
+	changes := orderclient.ToChanges(&orderv1.OrdersChangedSinceResponse{
+		Upserted: []*orderv1.OrderRecord{anOrder(), buyerless, later},
+		Next: &orderv1.OrderCursor{
+			UpdatedThrough:  timestamppb.New(noon),
+			LastOrderNumber: "ORD-20260922-E5F6G7H8",
+		},
+		HasMore: true,
+	})
+
+	require.Len(t, changes.Upserted, 2)
+	require.Equal(t, "ORD-20260922-A1B2C3D4", changes.Upserted[0].Number)
+	require.Equal(t, "ORD-20260922-E5F6G7H8", changes.Upserted[1].Number)
+	require.Len(t, changes.Refused, 1)
+	require.Equal(t, "ORD-20260922-NOBUYER0", changes.Refused[0].ID)
+	require.Equal(t, search.KindCorruptRecord, search.KindOf(changes.Refused[0].Reason))
+	require.Equal(
+		t,
+		search.Cursor{
+			UpdatedThrough: noon,
+			LastID:         "ORD-20260922-E5F6G7H8",
+		},
+		changes.Next,
+		"the page's cursor passes the refused order, so the next page does not ask for it again",
+	)
+	require.True(t, changes.HasMore)
+}

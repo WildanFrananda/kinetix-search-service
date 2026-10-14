@@ -13,6 +13,7 @@ type Reindexer[D any] struct {
 	source     search.Source[D]
 	index      search.Index[D]
 	checkpoint search.Checkpoint
+	lock       search.Lock
 	clock      search.Clock
 	log        *slog.Logger
 	pageSize   int
@@ -23,6 +24,7 @@ func NewReindexer[D any](
 	source search.Source[D],
 	index search.Index[D],
 	checkpoint search.Checkpoint,
+	lock search.Lock,
 	clock search.Clock,
 	log *slog.Logger,
 	pageSize int,
@@ -32,6 +34,7 @@ func NewReindexer[D any](
 		source:     source,
 		index:      index,
 		checkpoint: checkpoint,
+		lock:       lock,
 		clock:      clock,
 		log:        log,
 		pageSize:   pageSize,
@@ -59,6 +62,7 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 	}
 
 	var sent int64
+	var refused int64
 	var cur search.Cursor
 
 	for {
@@ -66,6 +70,9 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
+		logRefusals(ctx, r.log, r.collection, changes.Refused)
+		refused += int64(len(changes.Refused))
 
 		if len(changes.Upserted) > 0 {
 			if err := r.index.Bulk(ctx, gen, changes.Upserted); err != nil {
@@ -81,7 +88,9 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 		}
 	}
 
-	if !countable {
+	if countable {
+		expected -= refused
+	} else {
 		expected = sent
 	}
 
@@ -102,6 +111,12 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 		)
 	}
 
+	release, err := r.lock.Hold(ctx, r.collection)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	if err := r.index.Promote(ctx, gen); err != nil {
 		return err
 	}
@@ -119,6 +134,8 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 		string(gen),
 		"documents",
 		indexed,
+		"refused",
+		refused,
 		"counted_against",
 		reporter(countable),
 	)

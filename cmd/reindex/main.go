@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -9,18 +10,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	tsapi "github.com/typesense/typesense-go/v3/typesense"
+	"go.uber.org/dig"
 
 	"github.com/WildanFrananda/kinetix-search-service/internal/catalogclient"
-	"github.com/WildanFrananda/kinetix-search-service/internal/config"
 	"github.com/WildanFrananda/kinetix-search-service/internal/identityclient"
-	"github.com/WildanFrananda/kinetix-search-service/internal/indexing"
-	"github.com/WildanFrananda/kinetix-search-service/internal/mesh"
 	"github.com/WildanFrananda/kinetix-search-service/internal/orderclient"
-	"github.com/WildanFrananda/kinetix-search-service/internal/postgres"
 	"github.com/WildanFrananda/kinetix-search-service/internal/search"
-	"github.com/WildanFrananda/kinetix-search-service/internal/system"
-	"github.com/WildanFrananda/kinetix-search-service/internal/typesense"
+	"github.com/WildanFrananda/kinetix-search-service/internal/wiring"
 )
 
 func main() {
@@ -69,34 +65,29 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	cfg, err := config.FromEnvironment()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	container, err := wiring.Indexing(log)
 	if err != nil {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	var pool *pgxpool.Pool
+	err = container.Invoke(func(p *pgxpool.Pool) {
+		pool = p
+	})
 	if err != nil {
-		return search.Errf(search.KindDependencyUnavailable, "reindex.database", err, "connecting")
+		return dig.RootCause(err)
 	}
 	defer pool.Close()
-
-	engine := typesense.Connect(typesense.Settings{
-		URL:     cfg.TypesenseURL,
-		APIKey:  cfg.TypesenseAPIKey,
-		Timeout: cfg.TypesenseTimeout,
-	})
-
-	checkpoint := postgres.NewCheckpoint(pool)
 
 	for _, collection := range collections {
 		started := time.Now()
 		log.InfoContext(ctx, "reindex starting", "collection", string(collection))
 
-		if err := rebuild(ctx, collection, cfg, engine, checkpoint, log); err != nil {
-			return err
+		if err := rebuild(ctx, container, collection); err != nil {
+			return dig.RootCause(err)
 		}
 
 		log.InfoContext(
@@ -112,82 +103,14 @@ func run(log *slog.Logger) error {
 	return nil
 }
 
-func rebuild(
-	ctx context.Context,
-	collection search.Collection,
-	cfg config.Config,
-	engine *tsapi.Client,
-	checkpoint search.Checkpoint,
-	log *slog.Logger,
-) error {
+func rebuild(ctx context.Context, container *dig.Container, collection search.Collection) error {
 	switch collection {
 	case search.Products:
-		source, err := catalogclient.Dial(mesh.Settings{
-			Endpoint: cfg.CatalogEndpoint,
-			PKIDir:   cfg.PKIDir,
-			Deadline: cfg.CatalogDeadline,
-		})
-		if err != nil {
-			return err
-		}
-		defer func() { _ = source.Close() }()
-
-		return indexing.NewReindexer(
-			collection,
-			source,
-			typesense.NewIndex(engine, collection, typesense.EncodeProduct),
-			checkpoint,
-			system.Clock{},
-			log,
-			cfg.SyncPageSize,
-		).Run(ctx)
-
+		return reindex[*catalogclient.Client, search.ProductDoc](ctx, container)
 	case search.Merchants:
-		source, err := identityclient.Dial(mesh.Settings{
-			Endpoint: cfg.IdentityEndpoint,
-			PKIDir:   cfg.PKIDir,
-			Deadline: cfg.IdentityDeadline,
-		})
-		if err != nil {
-			return err
-		}
-		defer func() {
-			_ = source.Close()
-		}()
-
-		return indexing.NewReindexer(
-			collection,
-			source,
-			typesense.NewIndex(engine, collection, typesense.EncodeMerchant),
-			checkpoint,
-			system.Clock{},
-			log,
-			cfg.SyncPageSize,
-		).Run(ctx)
-
+		return reindex[*identityclient.Client, search.MerchantDoc](ctx, container)
 	case search.Orders:
-		source, err := orderclient.Dial(mesh.Settings{
-			Endpoint: cfg.OrderEndpoint,
-			PKIDir:   cfg.PKIDir,
-			Deadline: cfg.OrderDeadline,
-		})
-		if err != nil {
-			return err
-		}
-		defer func() {
-			_ = source.Close()
-		}()
-
-		return indexing.NewReindexer(
-			collection,
-			source,
-			typesense.NewIndex(engine, collection, typesense.EncodeOrder),
-			checkpoint,
-			system.Clock{},
-			log,
-			cfg.SyncPageSize,
-		).Run(ctx)
-
+		return reindex[*orderclient.Client, search.OrderDoc](ctx, container)
 	default:
 		return search.Errf(
 			search.KindMalformedQuery,
@@ -197,4 +120,14 @@ func rebuild(
 			string(collection),
 		)
 	}
+}
+
+func reindex[C io.Closer, D any](ctx context.Context, container *dig.Container) error {
+	return container.Invoke(func(r rebuilding[C, D]) error {
+		defer func() {
+			_ = r.Client.Close()
+		}()
+
+		return r.Reindexer.Run(ctx)
+	})
 }

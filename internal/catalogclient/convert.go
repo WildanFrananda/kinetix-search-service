@@ -28,6 +28,29 @@ func FromProtoCursor(c *catalogv1.Cursor) search.Cursor {
 	return out
 }
 
+func ToChanges(response *catalogv1.ChangedSinceResponse) search.Changes[search.ProductDoc] {
+	changes := search.Changes[search.ProductDoc]{
+		Upserted: make([]search.ProductDoc, 0, len(response.GetUpserted())),
+		Removed:  response.GetRemovedSkus(),
+		Next:     FromProtoCursor(response.GetNext()),
+		HasMore:  response.GetHasMore(),
+	}
+
+	for _, p := range response.GetUpserted() {
+		doc, err := ToDoc(p)
+		if err != nil {
+			changes.Refused = append(
+				changes.Refused,
+				search.Refusal{ID: p.GetSku(), Reason: err},
+			)
+			continue
+		}
+		changes.Upserted = append(changes.Upserted, doc)
+	}
+
+	return changes
+}
+
 func ToDoc(p *catalogv1.Product) (search.ProductDoc, error) {
 	id, err := search.NewProductID(p.GetSku())
 	if err != nil {

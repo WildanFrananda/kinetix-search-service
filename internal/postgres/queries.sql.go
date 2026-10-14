@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const holdCollection = `-- name: HoldCollection :exec
+SELECT pg_advisory_xact_lock(hashtext('kinetix-search.collection'), hashtext($1::text))
+`
+
+func (q *Queries) HoldCollection(ctx context.Context, collection string) error {
+	_, err := q.db.Exec(ctx, holdCollection, collection)
+	return err
+}
+
 const loadCheckpoint = `-- name: LoadCheckpoint :one
 SELECT updated_through, last_id, saved_at FROM sync_checkpoint WHERE collection = $1
 `

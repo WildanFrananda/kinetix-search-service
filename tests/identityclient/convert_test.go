@@ -103,3 +103,24 @@ func TestAMissingCursorReadsAsTheBeginning(t *testing.T) {
 	require.True(t, back.UpdatedThrough.IsZero())
 	require.Empty(t, back.LastID)
 }
+
+func TestAPageKeepsItsGoodMerchantsAndNamesTheOneItRefused(t *testing.T) {
+	changes := identityclient.ToChanges(&identityv1.MerchantsChangedSinceResponse{
+		Upserted: []*identityv1.MerchantRecord{
+			{PrincipalId: "m-1", StoreName: "Toko Satu"},
+			{StoreName: "Toko Hantu"},
+			{PrincipalId: "m-3", StoreName: "Toko Tiga"},
+		},
+		Next:    &identityv1.MerchantCursor{UpdatedThrough: timestamppb.New(noon), LastPrincipalId: "m-3"},
+		HasMore: true,
+	})
+
+	require.Len(t, changes.Upserted, 2)
+	require.Equal(t, "m-1", changes.Upserted[0].ID.String())
+	require.Equal(t, "m-3", changes.Upserted[1].ID.String())
+	require.Len(t, changes.Refused, 1)
+	require.Empty(t, changes.Refused[0].ID)
+	require.Equal(t, search.KindCorruptRecord, search.KindOf(changes.Refused[0].Reason))
+	require.Equal(t, search.Cursor{UpdatedThrough: noon, LastID: "m-3"}, changes.Next)
+	require.True(t, changes.HasMore)
+}

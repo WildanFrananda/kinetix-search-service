@@ -16,6 +16,9 @@ type FakeIndex[D any] struct {
 	BulkErr        error
 	LiveErr        error
 	CreateErr      error
+	Lock           *FakeLock
+	WrittenHeld    []bool
+	PromotedHeld   []bool
 }
 
 var _ search.Index[search.ProductDoc] = (*FakeIndex[search.ProductDoc])(nil)
@@ -36,6 +39,7 @@ func (f *FakeIndex[D]) Bulk(_ context.Context, gen search.Generation, docs []D) 
 		f.Written = map[search.Generation][]D{}
 	}
 	f.Written[gen] = append(f.Written[gen], docs...)
+	f.WrittenHeld = append(f.WrittenHeld, f.Lock.holding())
 	return nil
 }
 
@@ -56,6 +60,7 @@ func (f *FakeIndex[D]) CountIn(_ context.Context, gen search.Generation) (int64,
 
 func (f *FakeIndex[D]) Promote(_ context.Context, gen search.Generation) error {
 	f.Promoted = append(f.Promoted, gen)
+	f.PromotedHeld = append(f.PromotedHeld, f.Lock.holding())
 	f.LiveGeneration = gen
 	return nil
 }

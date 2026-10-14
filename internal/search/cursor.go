@@ -12,6 +12,7 @@ type Cursor struct {
 type Changes[D any] struct {
 	Upserted []D
 	Removed  []string
+	Refused  []Refusal
 	Next     Cursor
 	HasMore  bool
 }
