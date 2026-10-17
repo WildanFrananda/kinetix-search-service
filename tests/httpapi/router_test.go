@@ -70,8 +70,11 @@ func TestASearchCarriesItsOwnFreshness(t *testing.T) {
 		Hits: []search.Hit[search.ProductDoc]{{
 			Score: 12,
 			Doc: search.ProductDoc{
-				ID: productID(t, "p-1"), Title: "Sepatu kulit",
-				PriceMinor: 75_000_000, Currency: "IDR", UpdatedAt: noon,
+				ID:         productID(t, "p-1"),
+				Title:      "Sepatu kulit",
+				PriceMinor: 75_000_000,
+				Currency:   "IDR",
+				UpdatedAt:  noon,
 			},
 		}},
 	}
@@ -127,8 +130,10 @@ func TestAMalformedQueryIsTheCallersFault(t *testing.T) {
 func TestQueryParametersReachTheUseCase(t *testing.T) {
 	h := newHarness(t, noon, noon, time.Minute)
 
-	_, _ = h.get(t,
-		"/api/v1/products/search?q=sepatu&limit=5&offset=10&sort=price_asc&category=sepatu&category=sandal")
+	_, _ = h.get(
+		t,
+		"/api/v1/products/search?q=sepatu&limit=5&offset=10&sort=price_asc&category=sepatu&category=sandal",
+	)
 
 	require.Len(t, h.searcher.Asked, 1)
 	asked := h.searcher.Asked[0]
@@ -164,7 +169,9 @@ func TestHitsCarryThePriceExactly(t *testing.T) {
 		Total: 1,
 		Hits: []search.Hit[search.ProductDoc]{{
 			Doc: search.ProductDoc{
-				ID: productID(t, "p-1"), PriceMinor: 9_007_199_254_740_99, Currency: "IDR",
+				ID:         productID(t, "p-1"),
+				PriceMinor: 9_007_199_254_740_99,
+				Currency:   "IDR",
 			},
 		}},
 	}

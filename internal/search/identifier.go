@@ -55,6 +55,7 @@ func NewOrderID(raw string) (OrderID, error) {
 func (o OrderID) String() string {
 	return o.v
 }
+
 func (o OrderID) IsZero() bool {
 	return o.v == ""
 }

@@ -150,8 +150,10 @@ func toFacets(in map[string][]search.FacetValue) []*searchv1.Facet {
 		facet := &searchv1.Facet{Field: field, Values: make([]*searchv1.FacetValue, 0, len(values))}
 
 		for _, v := range values {
-			facet.Values = append(facet.Values,
-				&searchv1.FacetValue{Value: v.Value, Count: v.Count})
+			facet.Values = append(
+				facet.Values,
+				&searchv1.FacetValue{Value: v.Value, Count: v.Count},
+			)
 		}
 
 		out = append(out, facet)

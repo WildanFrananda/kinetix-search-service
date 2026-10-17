@@ -54,8 +54,10 @@ func newServer(
 func TestFreshnessTravelsOverGRPCToo(t *testing.T) {
 	server, _ := newServer(t, noon.Add(-2*time.Minute), noon.Add(-2*time.Minute), 10*time.Minute)
 
-	response, err := server.SearchProducts(context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu"})
+	response, err := server.SearchProducts(
+		context.Background(),
+		&searchv1.SearchProductsRequest{Text: "sepatu"},
+	)
 
 	require.NoError(t, err)
 	require.NotNil(t, response.GetFreshness())
@@ -83,8 +85,10 @@ func TestAnOutageIsUnavailableNotAnEmptyResult(t *testing.T) {
 		"cluster unreachable",
 	)
 
-	_, err := server.SearchProducts(context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu"})
+	_, err := server.SearchProducts(
+		context.Background(),
+		&searchv1.SearchProductsRequest{Text: "sepatu"},
+	)
 
 	require.Error(t, err)
 	require.Equal(
@@ -158,8 +162,11 @@ func TestAHitCarriesTheSharedMoneyType(t *testing.T) {
 		Hits: []search.Hit[search.ProductDoc]{{
 			Score: 7,
 			Doc: search.ProductDoc{
-				ID: productID(t, "p-1"), Title: "Sepatu",
-				PriceMinor: 75_000_000, Currency: "IDR", UpdatedAt: noon,
+				ID:         productID(t, "p-1"),
+				Title:      "Sepatu",
+				PriceMinor: 75_000_000,
+				Currency:   "IDR",
+				UpdatedAt:  noon,
 			},
 		}},
 	}

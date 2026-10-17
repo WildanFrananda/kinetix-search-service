@@ -45,8 +45,12 @@ func TestATimestampComesBackInUTC(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, time.UTC, doc.UpdatedAt.Location(),
-		"a document decoded on a WIB laptop must equal one decoded in a UTC container")
+	require.Equal(
+		t,
+		time.UTC,
+		doc.UpdatedAt.Location(),
+		"a document decoded on a WIB laptop must equal one decoded in a UTC container",
+	)
 	require.True(t, doc.UpdatedAt.Equal(noon))
 }
 
@@ -78,9 +82,12 @@ func TestAProductWithNoPriceIsStillIndexable(t *testing.T) {
 func TestAnEmptyCursorStaysEmptyOnTheWire(t *testing.T) {
 	out := catalogclient.ToProtoCursor(search.Cursor{})
 
-	require.Nil(t, out.GetUpdatedThrough(),
+	require.Nil(
+		t,
+		out.GetUpdatedThrough(),
 		"an unset timestamp is how the contract says from the beginning; sending the epoch would "+
-			"be a different instruction")
+			"be a different instruction",
+	)
 	require.Empty(t, out.GetLastSku())
 }
 

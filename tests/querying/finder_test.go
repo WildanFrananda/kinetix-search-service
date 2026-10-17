@@ -118,11 +118,18 @@ func TestAnIndexNobodyHasChangedIsNotStale(t *testing.T) {
 	results, err := f.Find(context.Background(), q)
 
 	require.NoError(t, err)
-	require.False(t, results.Freshness.Stale,
-		"a catalogue nobody edits is not an index nobody syncs")
+	require.False(
+		t,
+		results.Freshness.Stale,
+		"a catalogue nobody edits is not an index nobody syncs",
+	)
 	require.Equal(t, 20*time.Second, results.Freshness.Age)
-	require.Equal(t, noon.Add(-7*24*time.Hour), results.Freshness.IndexedThrough,
-		"the walk's own watermark is still reported, it just does not decide staleness")
+	require.Equal(
+		t,
+		noon.Add(-7*24*time.Hour),
+		results.Freshness.IndexedThrough,
+		"the walk's own watermark is still reported, it just does not decide staleness",
+	)
 }
 
 func TestAnIndexNobodyHasSyncedIsStale(t *testing.T) {

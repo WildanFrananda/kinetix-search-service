@@ -36,8 +36,12 @@ func TestTheAuthorityKeepsItsPort(t *testing.T) {
 
 	select {
 	case authority := <-seen.authority:
-		require.Equal(t, "kinetix-order-service:50055", authority,
-			"order's RequireHost(\"*:50055\") matches on the port; without it the call 404s")
+		require.Equal(
+			t,
+			"kinetix-order-service:50055",
+			authority,
+			"order's RequireHost(\"*:50055\") matches on the port; without it the call 404s",
+		)
 	case <-time.After(10 * time.Second):
 		t.Fatal("the server was never reached")
 	}
@@ -122,7 +126,8 @@ func serveAndReport(t *testing.T, pkiDir string) reported {
 func call(t *testing.T, creds credentials.TransportCredentials, target, addr string) error {
 	t.Helper()
 
-	conn, err := grpc.NewClient(target,
+	conn, err := grpc.NewClient(
+		target,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "tcp", addr)

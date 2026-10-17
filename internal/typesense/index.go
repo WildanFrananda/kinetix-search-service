@@ -113,7 +113,8 @@ func (i *Index[D]) CountIn(ctx context.Context, gen search.Generation) (int64, e
 
 func (i *Index[D]) Promote(ctx context.Context, gen search.Generation) error {
 	_, err := i.client.Aliases().Upsert(
-		ctx, string(i.collection),
+		ctx,
+		string(i.collection),
 		&api.CollectionAliasSchema{
 			CollectionName: string(gen),
 		},
