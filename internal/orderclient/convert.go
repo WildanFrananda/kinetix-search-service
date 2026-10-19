@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	commonv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/common/v1"
@@ -12,7 +13,10 @@ import (
 )
 
 func ToProtoCursor(cur search.Cursor) *orderv1.OrderCursor {
-	out := &orderv1.OrderCursor{LastOrderNumber: cur.LastID}
+	out := &orderv1.OrderCursor{
+		LastOrderNumber: cur.LastID,
+		TransactionId:   proto.Uint64(cur.TransactionID),
+	}
 
 	if !cur.UpdatedThrough.IsZero() {
 		out.UpdatedThrough = timestamppb.New(cur.UpdatedThrough)
@@ -26,13 +30,17 @@ func FromProtoCursor(c *orderv1.OrderCursor) search.Cursor {
 		return search.Cursor{}
 	}
 
-	out := search.Cursor{LastID: c.GetLastOrderNumber()}
+	out := search.Cursor{TransactionID: c.GetTransactionId(), LastID: c.GetLastOrderNumber()}
 
 	if ts := c.GetUpdatedThrough(); ts != nil {
 		out.UpdatedThrough = ts.AsTime().UTC()
 	}
 
 	return out
+}
+
+func CarriesTransaction(c *orderv1.OrderCursor) bool {
+	return c != nil && c.TransactionId != nil
 }
 
 func ToChanges(response *orderv1.OrdersChangedSinceResponse) search.Changes[search.OrderDoc] {

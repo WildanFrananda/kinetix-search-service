@@ -154,6 +154,17 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 - **The cursor is saved only after the write lands.** A cursor saved first skips exactly the page
   that failed, and the gap is never noticed.
 
+- **The cursor is a transaction, never a time.** Every source used to page by `(updated_at, key)`,
+  and `updated_at` is written before the transaction commits: a record whose transaction committed
+  after a later one's was behind the cursor by the time it was visible, and was never indexed. Since
+  2026-10-19 `search.Cursor` carries `TransactionID`, every request names one (zero at the start),
+  and catalog, identity and order answer in `(transaction, key)` order below the oldest transaction
+  still running. A source that answers without `transaction_id` predates contracts 1.5.0 and is
+  refused as unavailable: paging it by time would skip again, quietly. `sync_checkpoint` keeps the
+  transaction (`00002`); a checkpoint saved before it has none and starts its collection's walk again
+  from zero over the live generation, which re-applies upserts and tombstones and loses nothing.
+  `updated_through` stays as the freshness watermark only, and is never moved back.
+
 - **A reindex builds a new generation and promotes it only if it is not short of the source's
   count.** `<` rather than `!=`, because records created during the walk are legitimately ahead.
   The checkpoint is saved only after promotion, or incremental sync would write into a generation
@@ -248,7 +259,8 @@ compose, and an empty list permits nobody.
 
 All four contract changes are published: `catalog/v1` with `ChangedSince` (and catalog's first gRPC
 server), `search/v1`, `identity.v1.MerchantsChangedSince` and `order.v1.OrdersChangedSince`, pinned
-here at **v1.0.19**.
+here at **v1.5.0**, the first version with the transaction cursor. Search ships only after catalog, identity
+and order serve it.
 
 ## Three sources, two of which cannot count
 

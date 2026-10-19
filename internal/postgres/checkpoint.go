@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"math"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,7 +37,14 @@ func (c *Checkpoint) Load(ctx context.Context, col search.Collection) (search.Pr
 		)
 	}
 
-	progress := search.Progress{Cursor: search.Cursor{LastID: row.LastID}}
+	progress := search.Progress{}
+
+	if row.TransactionID.Valid {
+		progress.Cursor = search.Cursor{
+			TransactionID: uint64(row.TransactionID.Int64), //nolint:gosec // the column refuses a negative value
+			LastID:        row.LastID,
+		}
+	}
 
 	if row.UpdatedThrough.Valid {
 		progress.Cursor.UpdatedThrough = row.UpdatedThrough.Time.UTC()
@@ -50,8 +58,20 @@ func (c *Checkpoint) Load(ctx context.Context, col search.Collection) (search.Pr
 }
 
 func (c *Checkpoint) Save(ctx context.Context, col search.Collection, cur search.Cursor) error {
+	if cur.TransactionID > math.MaxInt64 {
+		return search.Errf(
+			search.KindDependencyUnavailable,
+			"postgres.SaveCheckpoint",
+			nil,
+			"the %s cursor names transaction %d, beyond what the checkpoint can store",
+			col,
+			cur.TransactionID,
+		)
+	}
+
 	err := c.q.SaveCheckpoint(ctx, SaveCheckpointParams{
 		Collection:     string(col),
+		TransactionID:  pgtype.Int8{Int64: int64(cur.TransactionID), Valid: true},
 		UpdatedThrough: pgtype.Timestamptz{Time: cur.UpdatedThrough, Valid: true},
 		LastID:         cur.LastID,
 	})

@@ -91,6 +91,8 @@ func (s *Syncer[D]) Once(ctx context.Context) error {
 			len(changes.Removed),
 			"refused",
 			len(changes.Refused),
+			"transaction",
+			changes.Next.TransactionID,
 			"through",
 			changes.Next.UpdatedThrough,
 		)

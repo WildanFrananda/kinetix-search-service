@@ -5,8 +5,9 @@ import "time"
 type Generation string
 
 type Cursor struct {
-	UpdatedThrough time.Time
+	TransactionID  uint64
 	LastID         string
+	UpdatedThrough time.Time
 }
 
 type Changes[D any] struct {

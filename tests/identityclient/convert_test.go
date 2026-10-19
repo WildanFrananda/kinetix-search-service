@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/identity/v1"
@@ -89,8 +90,21 @@ func TestAnEmptyCursorStaysEmptyOnTheWire(t *testing.T) {
 	require.Nil(t, out.GetUpdatedThrough(), "the beginning is unset, not the epoch")
 }
 
+func TestTheStartOfTheWalkNamesTransactionZero(t *testing.T) {
+	out := identityclient.ToProtoCursor(search.Cursor{})
+
+	require.NotNil(t, out.TransactionId, "a cursor without a transaction asks the source for the old, unsafe order")
+	require.Zero(t, out.GetTransactionId())
+}
+
+func TestOnlyAnAnswerThatNamesATransactionIsTaken(t *testing.T) {
+	require.False(t, identityclient.CarriesTransaction(nil))
+	require.False(t, identityclient.CarriesTransaction(&identityv1.MerchantCursor{LastPrincipalId: "x"}))
+	require.True(t, identityclient.CarriesTransaction(&identityv1.MerchantCursor{TransactionId: proto.Uint64(0)}))
+}
+
 func TestACursorSurvivesTheRoundTrip(t *testing.T) {
-	original := search.Cursor{UpdatedThrough: noon, LastID: "m-9"}
+	original := search.Cursor{TransactionID: 812, UpdatedThrough: noon, LastID: "m-9"}
 
 	back := identityclient.FromProtoCursor(identityclient.ToProtoCursor(original))
 
@@ -111,7 +125,11 @@ func TestAPageKeepsItsGoodMerchantsAndNamesTheOneItRefused(t *testing.T) {
 			{StoreName: "Toko Hantu"},
 			{PrincipalId: "m-3", StoreName: "Toko Tiga"},
 		},
-		Next:    &identityv1.MerchantCursor{UpdatedThrough: timestamppb.New(noon), LastPrincipalId: "m-3"},
+		Next: &identityv1.MerchantCursor{
+			UpdatedThrough:  timestamppb.New(noon),
+			LastPrincipalId: "m-3",
+			TransactionId:   proto.Uint64(812),
+		},
 		HasMore: true,
 	})
 
@@ -121,6 +139,6 @@ func TestAPageKeepsItsGoodMerchantsAndNamesTheOneItRefused(t *testing.T) {
 	require.Len(t, changes.Refused, 1)
 	require.Empty(t, changes.Refused[0].ID)
 	require.Equal(t, search.KindCorruptRecord, search.KindOf(changes.Refused[0].Reason))
-	require.Equal(t, search.Cursor{UpdatedThrough: noon, LastID: "m-3"}, changes.Next)
+	require.Equal(t, search.Cursor{TransactionID: 812, UpdatedThrough: noon, LastID: "m-3"}, changes.Next)
 	require.True(t, changes.HasMore)
 }
