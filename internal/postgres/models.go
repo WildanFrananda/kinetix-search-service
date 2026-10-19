@@ -21,4 +21,5 @@ type SyncCheckpoint struct {
 	UpdatedThrough pgtype.Timestamptz
 	LastID         string
 	SavedAt        pgtype.Timestamptz
+	TransactionID  pgtype.Int8
 }

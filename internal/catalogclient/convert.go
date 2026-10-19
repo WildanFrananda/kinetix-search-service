@@ -3,6 +3,7 @@ package catalogclient
 import (
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	catalogv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/catalog/v1"
@@ -10,7 +11,10 @@ import (
 )
 
 func ToProtoCursor(cur search.Cursor) *catalogv1.Cursor {
-	out := &catalogv1.Cursor{LastSku: cur.LastID}
+	out := &catalogv1.Cursor{
+		LastSku:       cur.LastID,
+		TransactionId: proto.Uint64(cur.TransactionID),
+	}
 	if !cur.UpdatedThrough.IsZero() {
 		out.UpdatedThrough = timestamppb.New(cur.UpdatedThrough)
 	}
@@ -21,11 +25,15 @@ func FromProtoCursor(c *catalogv1.Cursor) search.Cursor {
 	if c == nil {
 		return search.Cursor{}
 	}
-	out := search.Cursor{LastID: c.GetLastSku()}
+	out := search.Cursor{TransactionID: c.GetTransactionId(), LastID: c.GetLastSku()}
 	if ts := c.GetUpdatedThrough(); ts != nil {
 		out.UpdatedThrough = ts.AsTime().UTC()
 	}
 	return out
+}
+
+func CarriesTransaction(c *catalogv1.Cursor) bool {
+	return c != nil && c.TransactionId != nil
 }
 
 func ToChanges(response *catalogv1.ChangedSinceResponse) search.Changes[search.ProductDoc] {

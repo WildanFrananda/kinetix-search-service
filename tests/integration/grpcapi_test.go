@@ -142,8 +142,10 @@ func TestTheEdgeRefusesACallerWithNoCertificate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err = searchv1.NewSearchServiceClient(conn).SuggestProducts(ctx,
-		&searchv1.SuggestProductsRequest{Prefix: "x"})
+	_, err = searchv1.NewSearchServiceClient(conn).SuggestProducts(
+		ctx,
+		&searchv1.SuggestProductsRequest{Prefix: "x"},
+	)
 
 	require.Error(t, err, "TLS alone is not enough; the port requires a client certificate")
 	require.Equal(t, codes.Unavailable, status.Code(err))

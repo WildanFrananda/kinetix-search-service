@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/WildanFrananda/kinetix-search-service/internal/catalogclient"
@@ -45,8 +46,12 @@ func TestATimestampComesBackInUTC(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, time.UTC, doc.UpdatedAt.Location(),
-		"a document decoded on a WIB laptop must equal one decoded in a UTC container")
+	require.Equal(
+		t,
+		time.UTC,
+		doc.UpdatedAt.Location(),
+		"a document decoded on a WIB laptop must equal one decoded in a UTC container",
+	)
 	require.True(t, doc.UpdatedAt.Equal(noon))
 }
 
@@ -78,14 +83,30 @@ func TestAProductWithNoPriceIsStillIndexable(t *testing.T) {
 func TestAnEmptyCursorStaysEmptyOnTheWire(t *testing.T) {
 	out := catalogclient.ToProtoCursor(search.Cursor{})
 
-	require.Nil(t, out.GetUpdatedThrough(),
+	require.Nil(
+		t,
+		out.GetUpdatedThrough(),
 		"an unset timestamp is how the contract says from the beginning; sending the epoch would "+
-			"be a different instruction")
+			"be a different instruction",
+	)
 	require.Empty(t, out.GetLastSku())
 }
 
+func TestTheStartOfTheWalkNamesTransactionZero(t *testing.T) {
+	out := catalogclient.ToProtoCursor(search.Cursor{})
+
+	require.NotNil(t, out.TransactionId, "a cursor without a transaction asks the source for the old, unsafe order")
+	require.Zero(t, out.GetTransactionId())
+}
+
+func TestOnlyAnAnswerThatNamesATransactionIsTaken(t *testing.T) {
+	require.False(t, catalogclient.CarriesTransaction(nil))
+	require.False(t, catalogclient.CarriesTransaction(&catalogv1.Cursor{LastSku: "x"}))
+	require.True(t, catalogclient.CarriesTransaction(&catalogv1.Cursor{TransactionId: proto.Uint64(0)}))
+}
+
 func TestACursorSurvivesTheRoundTrip(t *testing.T) {
-	original := search.Cursor{UpdatedThrough: noon, LastID: "SHOE-9"}
+	original := search.Cursor{TransactionID: 812, UpdatedThrough: noon, LastID: "SHOE-9"}
 
 	back := catalogclient.FromProtoCursor(catalogclient.ToProtoCursor(original))
 
@@ -107,7 +128,11 @@ func TestAPageKeepsItsGoodProductsAndNamesTheOneItRefused(t *testing.T) {
 			{Sku: "SHOE-3", Price: &commonv1.Money{Currency: "IDR"}},
 		},
 		RemovedSkus: []string{"SHOE-9"},
-		Next:        &catalogv1.Cursor{UpdatedThrough: timestamppb.New(noon), LastSku: "SHOE-3"},
+		Next: &catalogv1.Cursor{
+			UpdatedThrough: timestamppb.New(noon),
+			LastSku:        "SHOE-3",
+			TransactionId:  proto.Uint64(812),
+		},
 	})
 
 	require.Len(t, changes.Upserted, 2)
@@ -117,5 +142,5 @@ func TestAPageKeepsItsGoodProductsAndNamesTheOneItRefused(t *testing.T) {
 	require.Len(t, changes.Refused, 1)
 	require.Equal(t, "   ", changes.Refused[0].ID)
 	require.Equal(t, search.KindCorruptRecord, search.KindOf(changes.Refused[0].Reason))
-	require.Equal(t, search.Cursor{UpdatedThrough: noon, LastID: "SHOE-3"}, changes.Next)
+	require.Equal(t, search.Cursor{TransactionID: 812, UpdatedThrough: noon, LastID: "SHOE-3"}, changes.Next)
 }

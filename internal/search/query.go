@@ -42,6 +42,7 @@ func WithCategories(c ...string) QueryOption {
 		q.Categories = c
 	}
 }
+
 func WithMerchant(m MerchantID) QueryOption {
 	return func(q *Query) {
 		q.MerchantID = m

@@ -14,8 +14,8 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="https://github.com/WildanFrananda/kinetix-contracts.git"
-TAG="v1.0.19"
-COMMIT="9008e09bd71a6f2181f2dbc5f6b0f5a1f6a982ae"
+TAG="v1.5.0"
+COMMIT="261756184a30a73cfaa9daf5b0206262fa4896ef"
 DEST="$HERE/contracts"
 GENDIR="$HERE/internal/contractgen"
 

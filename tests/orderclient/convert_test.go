@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	commonv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/common/v1"
@@ -100,8 +101,21 @@ func TestAnEmptyCursorStaysEmptyOnTheWire(t *testing.T) {
 	require.Nil(t, out.GetUpdatedThrough(), "the beginning is unset, not the epoch")
 }
 
+func TestTheStartOfTheWalkNamesTransactionZero(t *testing.T) {
+	out := orderclient.ToProtoCursor(search.Cursor{})
+
+	require.NotNil(t, out.TransactionId, "a cursor without a transaction asks the source for the old, unsafe order")
+	require.Zero(t, out.GetTransactionId())
+}
+
+func TestOnlyAnAnswerThatNamesATransactionIsTaken(t *testing.T) {
+	require.False(t, orderclient.CarriesTransaction(nil))
+	require.False(t, orderclient.CarriesTransaction(&orderv1.OrderCursor{LastOrderNumber: "x"}))
+	require.True(t, orderclient.CarriesTransaction(&orderv1.OrderCursor{TransactionId: proto.Uint64(0)}))
+}
+
 func TestACursorSurvivesTheRoundTrip(t *testing.T) {
-	original := search.Cursor{UpdatedThrough: noon, LastID: "ORD-20260922-A1B2C3D4"}
+	original := search.Cursor{TransactionID: 812, UpdatedThrough: noon, LastID: "ORD-20260922-A1B2C3D4"}
 
 	back := orderclient.FromProtoCursor(orderclient.ToProtoCursor(original))
 
@@ -128,6 +142,7 @@ func TestAPageKeepsItsGoodOrdersAndNamesTheOneItRefused(t *testing.T) {
 		Next: &orderv1.OrderCursor{
 			UpdatedThrough:  timestamppb.New(noon),
 			LastOrderNumber: "ORD-20260922-E5F6G7H8",
+			TransactionId:   proto.Uint64(812),
 		},
 		HasMore: true,
 	})
@@ -141,6 +156,7 @@ func TestAPageKeepsItsGoodOrdersAndNamesTheOneItRefused(t *testing.T) {
 	require.Equal(
 		t,
 		search.Cursor{
+			TransactionID:  812,
 			UpdatedThrough: noon,
 			LastID:         "ORD-20260922-E5F6G7H8",
 		},

@@ -1,11 +1,12 @@
 -- name: LoadCheckpoint :one
-SELECT updated_through, last_id, saved_at FROM sync_checkpoint WHERE collection = $1;
+SELECT transaction_id, updated_through, last_id, saved_at FROM sync_checkpoint WHERE collection = $1;
 
 -- name: SaveCheckpoint :exec
-INSERT INTO sync_checkpoint (collection, updated_through, last_id, saved_at)
-VALUES ($1, $2, $3, now())
+INSERT INTO sync_checkpoint (collection, transaction_id, updated_through, last_id, saved_at)
+VALUES ($1, $2, $3, $4, now())
 ON CONFLICT (collection) DO UPDATE
-   SET updated_through = EXCLUDED.updated_through,
+   SET transaction_id  = EXCLUDED.transaction_id,
+       updated_through = GREATEST(sync_checkpoint.updated_through, EXCLUDED.updated_through),
        last_id         = EXCLUDED.last_id,
        saved_at        = EXCLUDED.saved_at;
 

@@ -72,6 +72,15 @@ func (c *Client) ChangedSince(
 		)
 	}
 
+	if !CarriesTransaction(response.GetNext()) {
+		return search.Changes[search.ProductDoc]{}, search.Errf(
+			search.KindDependencyUnavailable,
+			"catalogclient.ChangedSince",
+			nil,
+			"catalog answered without a transaction cursor; it predates contracts 1.5.0",
+		)
+	}
+
 	return ToChanges(response), nil
 }
 

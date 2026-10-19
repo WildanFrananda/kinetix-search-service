@@ -21,10 +21,11 @@ func (q *Queries) HoldCollection(ctx context.Context, collection string) error {
 }
 
 const loadCheckpoint = `-- name: LoadCheckpoint :one
-SELECT updated_through, last_id, saved_at FROM sync_checkpoint WHERE collection = $1
+SELECT transaction_id, updated_through, last_id, saved_at FROM sync_checkpoint WHERE collection = $1
 `
 
 type LoadCheckpointRow struct {
+	TransactionID  pgtype.Int8
 	UpdatedThrough pgtype.Timestamptz
 	LastID         string
 	SavedAt        pgtype.Timestamptz
@@ -33,7 +34,12 @@ type LoadCheckpointRow struct {
 func (q *Queries) LoadCheckpoint(ctx context.Context, collection string) (LoadCheckpointRow, error) {
 	row := q.db.QueryRow(ctx, loadCheckpoint, collection)
 	var i LoadCheckpointRow
-	err := row.Scan(&i.UpdatedThrough, &i.LastID, &i.SavedAt)
+	err := row.Scan(
+		&i.TransactionID,
+		&i.UpdatedThrough,
+		&i.LastID,
+		&i.SavedAt,
+	)
 	return i, err
 }
 
@@ -70,21 +76,28 @@ func (q *Queries) RecordGeneration(ctx context.Context, arg RecordGenerationPara
 }
 
 const saveCheckpoint = `-- name: SaveCheckpoint :exec
-INSERT INTO sync_checkpoint (collection, updated_through, last_id, saved_at)
-VALUES ($1, $2, $3, now())
+INSERT INTO sync_checkpoint (collection, transaction_id, updated_through, last_id, saved_at)
+VALUES ($1, $2, $3, $4, now())
 ON CONFLICT (collection) DO UPDATE
-   SET updated_through = EXCLUDED.updated_through,
+   SET transaction_id  = EXCLUDED.transaction_id,
+       updated_through = GREATEST(sync_checkpoint.updated_through, EXCLUDED.updated_through),
        last_id         = EXCLUDED.last_id,
        saved_at        = EXCLUDED.saved_at
 `
 
 type SaveCheckpointParams struct {
 	Collection     string
+	TransactionID  pgtype.Int8
 	UpdatedThrough pgtype.Timestamptz
 	LastID         string
 }
 
 func (q *Queries) SaveCheckpoint(ctx context.Context, arg SaveCheckpointParams) error {
-	_, err := q.db.Exec(ctx, saveCheckpoint, arg.Collection, arg.UpdatedThrough, arg.LastID)
+	_, err := q.db.Exec(ctx, saveCheckpoint,
+		arg.Collection,
+		arg.TransactionID,
+		arg.UpdatedThrough,
+		arg.LastID,
+	)
 	return err
 }

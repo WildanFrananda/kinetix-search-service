@@ -3,6 +3,7 @@ package identityclient
 import (
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/WildanFrananda/kinetix-search-service/internal/contractgen/identity/v1"
@@ -10,7 +11,10 @@ import (
 )
 
 func ToProtoCursor(cur search.Cursor) *identityv1.MerchantCursor {
-	out := &identityv1.MerchantCursor{LastPrincipalId: cur.LastID}
+	out := &identityv1.MerchantCursor{
+		LastPrincipalId: cur.LastID,
+		TransactionId:   proto.Uint64(cur.TransactionID),
+	}
 
 	if !cur.UpdatedThrough.IsZero() {
 		out.UpdatedThrough = timestamppb.New(cur.UpdatedThrough)
@@ -24,13 +28,17 @@ func FromProtoCursor(c *identityv1.MerchantCursor) search.Cursor {
 		return search.Cursor{}
 	}
 
-	out := search.Cursor{LastID: c.GetLastPrincipalId()}
+	out := search.Cursor{TransactionID: c.GetTransactionId(), LastID: c.GetLastPrincipalId()}
 
 	if ts := c.GetUpdatedThrough(); ts != nil {
 		out.UpdatedThrough = ts.AsTime().UTC()
 	}
 
 	return out
+}
+
+func CarriesTransaction(c *identityv1.MerchantCursor) bool {
+	return c != nil && c.TransactionId != nil
 }
 
 func ToChanges(response *identityv1.MerchantsChangedSinceResponse) search.Changes[search.MerchantDoc] {
