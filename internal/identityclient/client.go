@@ -23,21 +23,13 @@ var _ search.Source[search.MerchantDoc] = (*Client)(nil)
 
 func Dial(s mesh.Settings) (*Client, error) {
 	creds, err := mesh.MutualTLS("identityclient.Dial", s)
-
 	if err != nil {
 		return nil, err
 	}
 
 	conn, err := grpc.NewClient(s.Endpoint, grpc.WithTransportCredentials(creds))
-
 	if err != nil {
-		return nil, search.Errf(
-			search.KindDependencyUnavailable,
-			"identityclient.Dial",
-			err,
-			"dialing %s",
-			s.Endpoint,
-		)
+		return nil, search.Errf(search.KindDependencyUnavailable, "identityclient.Dial", err, "dialing %s", s.Endpoint)
 	}
 
 	return &Client{

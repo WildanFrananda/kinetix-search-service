@@ -13,6 +13,7 @@ type FacetValue struct {
 }
 
 type Freshness struct {
+	Synced         bool
 	IndexedThrough time.Time
 	Age            time.Duration
 	Stale          bool

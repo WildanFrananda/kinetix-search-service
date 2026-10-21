@@ -24,10 +24,7 @@ import (
 
 func TestTheAuthorityKeepsItsPort(t *testing.T) {
 	dir := searchtest.WritePKI(t, "kinetix-order-service")
-	creds, err := mesh.MutualTLS("test", mesh.Settings{
-		Endpoint: "kinetix-order-service:50055",
-		PKIDir:   dir,
-	})
+	creds, err := mesh.MutualTLS("test", mesh.Settings{Endpoint: "kinetix-order-service:50055", PKIDir: dir})
 	require.NoError(t, err)
 
 	seen := serveAndReport(t, dir)
@@ -49,10 +46,7 @@ func TestTheAuthorityKeepsItsPort(t *testing.T) {
 
 func TestTheHandshakeVerifiesTheHostBeingDialled(t *testing.T) {
 	dir := searchtest.WritePKI(t, "kinetix-order-service")
-	creds, err := mesh.MutualTLS("test", mesh.Settings{
-		Endpoint: "kinetix-review-service:50057",
-		PKIDir:   dir,
-	})
+	creds, err := mesh.MutualTLS("test", mesh.Settings{Endpoint: "kinetix-review-service:50057", PKIDir: dir})
 	require.NoError(t, err)
 
 	seen := serveAndReport(t, dir)
@@ -73,10 +67,7 @@ func TestAnEmptyLeafIsRefused(t *testing.T) {
 	dir := searchtest.WritePKI(t, "kinetix-order-service")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "tls.crt"), nil, 0o600))
 
-	_, err := mesh.MutualTLS("test", mesh.Settings{
-		Endpoint: "kinetix-order-service:50055",
-		PKIDir:   dir,
-	})
+	_, err := mesh.MutualTLS("test", mesh.Settings{Endpoint: "kinetix-order-service:50055", PKIDir: dir})
 
 	require.Error(t, err, "an empty file is not a certificate")
 	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
@@ -90,10 +81,7 @@ type reported struct {
 func serveAndReport(t *testing.T, pkiDir string) reported {
 	t.Helper()
 
-	pair, err := tls.LoadX509KeyPair(
-		filepath.Join(pkiDir, "tls.crt"),
-		filepath.Join(pkiDir, "tls.key"),
-	)
+	pair, err := tls.LoadX509KeyPair(filepath.Join(pkiDir, "tls.crt"), filepath.Join(pkiDir, "tls.key"))
 	require.NoError(t, err)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -102,10 +90,9 @@ func serveAndReport(t *testing.T, pkiDir string) reported {
 	out := reported{addr: listener.Addr().String(), authority: make(chan string, 1)}
 
 	server := grpc.NewServer(
-		grpc.Creds(credentials.NewTLS(&tls.Config{
-			Certificates: []tls.Certificate{pair},
-			MinVersion:   tls.VersionTLS13,
-		})),
+		grpc.Creds(
+			credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS13}),
+		),
 		grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
 			if md, ok := metadata.FromIncomingContext(stream.Context()); ok {
 				if values := md.Get(":authority"); len(values) > 0 {
@@ -118,6 +105,7 @@ func serveAndReport(t *testing.T, pkiDir string) reported {
 	)
 
 	go func() { _ = server.Serve(listener) }()
+
 	t.Cleanup(server.Stop)
 
 	return out
@@ -147,11 +135,5 @@ func callThrough(t *testing.T, creds credentials.TransportCredentials, target, a
 
 	err := call(t, creds, target, addr)
 	require.Error(t, err)
-	require.Equalf(
-		t,
-		codes.Unimplemented,
-		status.Code(err),
-		"the call never reached the server: %v",
-		err,
-	)
+	require.Equalf(t, codes.Unimplemented, status.Code(err), "the call never reached the server: %v", err)
 }

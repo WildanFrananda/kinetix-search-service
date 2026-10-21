@@ -14,7 +14,7 @@ type engineParams struct {
 	Config config.Config
 }
 
-func provideEngine(p engineParams) *tsapi.Client {
+func provideEngine(p engineParams) (*tsapi.Client, error) {
 	return typesense.Connect(typesense.Settings{
 		URL:     p.Config.TypesenseURL,
 		APIKey:  p.Config.TypesenseAPIKey,

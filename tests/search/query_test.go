@@ -31,11 +31,76 @@ func TestQueryCapsThePageWhateverIsAsked(t *testing.T) {
 	require.Equal(t, search.MaxPageSize, q.Page.Limit)
 }
 
-func TestQueryIgnoresANonsensePage(t *testing.T) {
-	q, err := search.NewQuery("sepatu", search.WithPage(-5, -1))
+func TestQueryKeepsTheOffsetExactly(t *testing.T) {
+	q, err := search.NewQuery("sepatu", search.WithPage(50, 24))
 	require.NoError(t, err)
-	require.Equal(t, 0, q.Page.Offset)
-	require.Equal(t, search.DefaultPageSize, q.Page.Limit)
+
+	require.Equal(t, search.Page{Offset: 50, Limit: 24}, q.Page)
+}
+
+func TestAZeroLimitIsTheDefault(t *testing.T) {
+	q, err := search.NewQuery("sepatu", search.WithPage(10, 0))
+	require.NoError(t, err)
+
+	require.Equal(t, search.Page{Offset: 10, Limit: search.DefaultPageSize}, q.Page)
+}
+
+func TestQueryRefusesANegativePageRatherThanReplacingIt(t *testing.T) {
+	for _, page := range []search.Page{{Offset: -5}, {Limit: -1}} {
+		_, err := search.NewQuery("sepatu", search.WithPage(page.Offset, page.Limit))
+
+		require.Error(t, err)
+		require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+	}
+}
+
+func TestQueryRefusesAnUnknownRanking(t *testing.T) {
+	_, err := search.NewQuery("sepatu", search.WithRanking("cheapest"))
+
+	require.Error(t, err)
+	require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+}
+
+func TestEmptyCategoriesAreNoFilter(t *testing.T) {
+	q, err := search.NewQuery("", search.WithCategories("", "  ", " sepatu "))
+	require.NoError(t, err)
+	require.Equal(t, []string{"sepatu"}, q.Categories)
+
+	q, err = search.NewQuery("", search.WithCategories(""))
+	require.NoError(t, err)
+	require.Empty(t, q.Categories)
+}
+
+func TestACategoryIsHeldToTheSameRulesAsTheText(t *testing.T) {
+	for _, category := range []string{strings.Repeat("x", search.MaxQueryLength+1), "sepatu\x00"} {
+		_, err := search.NewQuery("", search.WithCategories(category))
+
+		require.Error(t, err)
+		require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+	}
+}
+
+func TestASuggestionIsHeldToTheSameRulesAsASearch(t *testing.T) {
+	for _, prefix := range []string{strings.Repeat("x", search.MaxQueryLength+1), "sep\x1b[31m"} {
+		_, err := search.NewSuggestQuery(prefix, 5)
+
+		require.Error(t, err)
+		require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+	}
+
+	_, err := search.NewSuggestQuery("sep", -1)
+	require.Error(t, err)
+	require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+}
+
+func TestASuggestionIsCappedLikeASearch(t *testing.T) {
+	q, err := search.NewSuggestQuery("  sep ", 1_000_000)
+	require.NoError(t, err)
+	require.Equal(t, search.SuggestQuery{Prefix: "sep", Limit: search.MaxPageSize}, q)
+
+	q, err = search.NewSuggestQuery("sep", 0)
+	require.NoError(t, err)
+	require.Equal(t, search.DefaultSuggestions, q.Limit)
 }
 
 func TestQueryRefusesWhatCannotBeSearchedFor(t *testing.T) {

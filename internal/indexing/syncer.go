@@ -69,6 +69,7 @@ func (s *Syncer[D]) Once(ctx context.Context) error {
 				return err
 			}
 		}
+
 		if len(changes.Removed) > 0 {
 			if err := s.index.Remove(ctx, gen, changes.Removed); err != nil {
 				return err
@@ -78,6 +79,7 @@ func (s *Syncer[D]) Once(ctx context.Context) error {
 		if err := s.checkpoint.Save(ctx, s.collection, changes.Next); err != nil {
 			return err
 		}
+
 		cur = changes.Next
 
 		s.log.InfoContext(

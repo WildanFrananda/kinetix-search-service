@@ -14,6 +14,7 @@ import (
 
 func twoProducts(t *testing.T) *searchtest.FakeSource[search.ProductDoc] {
 	t.Helper()
+
 	return &searchtest.FakeSource[search.ProductDoc]{
 		Total: 2,
 		Pages: []search.Changes[search.ProductDoc]{{

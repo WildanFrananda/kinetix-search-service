@@ -1,6 +1,7 @@
 package typesense_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,22 +13,32 @@ import (
 
 func principal(t *testing.T, raw string) search.MerchantID {
 	t.Helper()
+
 	id, err := search.NewMerchantID(raw)
 	require.NoError(t, err)
+
 	return id
+}
+
+func filter(t *testing.T, collection search.Collection, q search.Query) string {
+	t.Helper()
+
+	f, err := typesense.FilterFor(collection, q)
+	require.NoError(t, err)
+
+	return f
 }
 
 func TestOrdersAreScopedToBothSidesOfThePrincipal(t *testing.T) {
 	q, err := search.NewQuery("KNX-2026")
 	require.NoError(t, err)
-	q = q.ForPrincipal(principal(t, "principal-9"))
 
-	filter := typesense.FilterFor(search.Orders, q)
+	q = q.ForPrincipal(principal(t, "principal-9"))
 
 	require.Equal(
 		t,
 		"(buyer:=`principal-9` || merchant_id:=`principal-9`)",
-		filter,
+		filter(t, search.Orders, q),
 		"a principal is the buyer on their purchases and the merchant on their sales",
 	)
 }
@@ -35,42 +46,73 @@ func TestOrdersAreScopedToBothSidesOfThePrincipal(t *testing.T) {
 func TestPublicCollectionsIgnoreThePrincipalScope(t *testing.T) {
 	q, err := search.NewQuery("sepatu")
 	require.NoError(t, err)
+
 	q = q.ForPrincipal(principal(t, "principal-9"))
 
-	require.Empty(t, typesense.FilterFor(search.Products, q))
-	require.Empty(t, typesense.FilterFor(search.Merchants, q))
+	require.Empty(t, filter(t, search.Products, q))
+	require.Empty(t, filter(t, search.Merchants, q))
 }
 
-func TestFilterValuesCannotCloseTheirOwnQuote(t *testing.T) {
-	q, err := search.NewQuery("sepatu", search.WithCategories("shoes` || id:=*"))
+func TestAFilterValueTheEngineCannotMatchExactlyIsRefused(t *testing.T) {
+	for _, category := range []string{"shoes` || id:=*", "sepatu\\", "sep*"} {
+		q, err := search.NewQuery("", search.WithCategories(category))
+		require.NoError(t, err)
+
+		_, err = typesense.FilterFor(search.Products, q)
+
+		require.Error(t, err, category)
+		require.Equal(t, search.KindMalformedQuery, search.KindOf(err), category)
+	}
+
+	q, err := search.NewQuery("", search.WithMerchant(principal(t, "shop`1")))
 	require.NoError(t, err)
 
-	filter := typesense.FilterFor(search.Products, q)
+	_, err = typesense.FilterFor(search.Products, q)
 
-	require.Equal(t, "categories:=[`shoes || id:=*`]", filter)
-	require.Equal(t, 2, strings.Count(filter, "`"), "exactly one opening and one closing quote")
+	require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+}
+
+func TestPunctuationInsideAQuoteIsKept(t *testing.T) {
+	q, err := search.NewQuery("", search.WithCategories("Pakaian (Pria)", "c1]", "a && b"))
+	require.NoError(t, err)
+
+	require.Equal(t, "categories:=[`Pakaian (Pria)`,`c1]`,`a && b`]", filter(t, search.Products, q))
 }
 
 func TestCategoriesAreOredTogether(t *testing.T) {
 	q, err := search.NewQuery("", search.WithCategories("sepatu", "sandal"))
 	require.NoError(t, err)
 
-	require.Equal(t, "categories:=[`sepatu`,`sandal`]", typesense.FilterFor(search.Products, q))
+	require.Equal(t, "categories:=[`sepatu`,`sandal`]", filter(t, search.Products, q))
 }
 
 func TestFiltersCombineWithAnd(t *testing.T) {
-	q, err := search.NewQuery(
-		"",
-		search.WithMerchant(principal(t, "shop-1")),
-		search.WithCategories("sepatu"),
-	)
+	q, err := search.NewQuery("", search.WithMerchant(principal(t, "shop-1")), search.WithCategories("sepatu"))
 	require.NoError(t, err)
 
-	require.Equal(
-		t,
-		"merchant_id:=`shop-1` && categories:=[`sepatu`]",
-		typesense.FilterFor(search.Products, q),
-	)
+	require.Equal(t, "merchant_id:=`shop-1` && categories:=[`sepatu`]", filter(t, search.Products, q))
+}
+
+func TestEveryFilterFieldIndexesItsPunctuation(t *testing.T) {
+	filtered := map[search.Collection][]string{
+		search.Products:  {"merchant_id", "categories"},
+		search.Merchants: {"categories"},
+		search.Orders:    {"buyer", "merchant_id"},
+	}
+
+	for collection, names := range filtered {
+		schema := typesense.SchemaFor(collection, typesense.NewGeneration(collection, 1))
+
+		for _, field := range schema.Fields {
+			if !slices.Contains(names, field.Name) {
+				continue
+			}
+
+			require.NotNil(t, field.SymbolsToIndex, "%s.%s", collection, field.Name)
+			require.Contains(t, *field.SymbolsToIndex, "]", "%s.%s", collection, field.Name)
+			require.NotContains(t, *field.SymbolsToIndex, "`", "a backtick indexed breaks the scalar quote")
+		}
+	}
 }
 
 func TestSortByProfile(t *testing.T) {
@@ -82,18 +124,6 @@ func TestSortByProfile(t *testing.T) {
 func TestSortByPriceFallsBackWhereThereIsNoPrice(t *testing.T) {
 	require.Equal(t, "_text_match:desc", typesense.SortFor(search.Merchants, search.RankByPriceAsc))
 	require.Equal(t, "_text_match:desc", typesense.SortFor(search.Orders, search.RankByPriceAsc))
-}
-
-func TestPageConversionIsOneBased(t *testing.T) {
-	page, perPage := typesense.PageFor(search.Page{Offset: 0, Limit: 24})
-	require.Equal(t, 1, page)
-	require.Equal(t, 24, perPage)
-
-	page, _ = typesense.PageFor(search.Page{Offset: 48, Limit: 24})
-	require.Equal(t, 3, page)
-
-	page, _ = typesense.PageFor(search.Page{Offset: 50, Limit: 24})
-	require.Equal(t, 3, page)
 }
 
 func TestQueryFieldsAndWeightsAgree(t *testing.T) {

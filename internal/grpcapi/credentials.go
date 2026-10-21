@@ -22,19 +22,16 @@ func ServerCredentials(pkiDir string) (credentials.TransportCredentials, error) 
 	}
 
 	certPEM, err := read(pkiDir, "tls.crt")
-
 	if err != nil {
 		return nil, err
 	}
 
 	keyPEM, err := read(pkiDir, "tls.key")
-
 	if err != nil {
 		return nil, err
 	}
 
 	caPEM, err := read(pkiDir, "ca.pem")
-
 	if err != nil {
 		return nil, err
 	}
@@ -70,26 +67,15 @@ func ServerCredentials(pkiDir string) (credentials.TransportCredentials, error) 
 
 func read(dir, name string) ([]byte, error) {
 	path := filepath.Join(dir, name)
-	data, err := os.ReadFile(path) //nolint:gosec // the path is configuration, not a request
 
+	data, err := os.ReadFile(path) //nolint:gosec // the path is configuration, not a request
 	if err != nil {
-		return nil, search.Errf(
-			search.KindDependencyUnavailable,
-			"grpcapi.ServerCredentials",
-			err,
-			"reading %s",
-			path,
-		)
+		return nil, search.Errf(search.KindDependencyUnavailable, "grpcapi.ServerCredentials", err, "reading %s", path)
 	}
 
 	if len(data) == 0 {
-		return nil, search.Errf(
-			search.KindDependencyUnavailable,
-			"grpcapi.ServerCredentials",
-			nil,
-			"%s is empty",
-			path,
-		)
+		return nil, search.Errf(search.KindDependencyUnavailable, "grpcapi.ServerCredentials", nil, "%s is empty", path)
 	}
+
 	return data, nil
 }

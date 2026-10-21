@@ -51,16 +51,27 @@ func (f *Finder[D]) Find(ctx context.Context, q search.Query) (search.Results[D]
 		return search.Results[D]{}, err
 	}
 
+	results.Freshness = f.freshness(progress)
+
+	return results, nil
+}
+
+func (f *Finder[D]) freshness(progress search.Progress) search.Freshness {
+	if progress.SavedAt.IsZero() {
+		return search.Freshness{Synced: false, Stale: true}
+	}
+
 	age := f.clock.Now().Sub(progress.SavedAt)
-	results.Freshness = search.Freshness{
+
+	return search.Freshness{
+		Synced:         true,
 		IndexedThrough: progress.Cursor.UpdatedThrough,
 		Age:            age,
 		Stale:          age > f.staleAfter,
 	}
-	return results, nil
 }
 
-func (f *Finder[D]) Suggest(ctx context.Context, prefix string, limit int) ([]string, error) {
+func (f *Finder[D]) Suggest(ctx context.Context, q search.SuggestQuery) ([]string, error) {
 	if f.collection == search.Orders {
 		return nil, search.Errf(
 			search.KindMalformedQuery,
@@ -70,9 +81,9 @@ func (f *Finder[D]) Suggest(ctx context.Context, prefix string, limit int) ([]st
 		)
 	}
 
-	if limit <= 0 || limit > search.MaxPageSize {
-		limit = 10
+	if q.Prefix == "" {
+		return []string{}, nil
 	}
 
-	return f.searcher.Suggest(ctx, prefix, limit)
+	return f.searcher.Suggest(ctx, q)
 }

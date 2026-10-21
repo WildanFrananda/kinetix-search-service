@@ -1,6 +1,8 @@
 package typesense
 
 import (
+	"strings"
+
 	"github.com/typesense/typesense-go/v3/typesense/api"
 
 	"github.com/WildanFrananda/kinetix-search-service/internal/search"
@@ -8,6 +10,12 @@ import (
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func exactSymbols() *[]string {
+	symbols := strings.Split("!\"#$%&'()*+,-./:;<=>?@[\\]^_{|}~", "")
+
+	return &symbols
 }
 
 func SchemaFor(collection search.Collection, gen search.Generation) *api.CollectionSchema {
@@ -54,10 +62,16 @@ func productSchema(gen search.Generation) *api.CollectionSchema {
 		Name: string(gen),
 		Fields: []api.Field{
 			{Name: "id", Type: "string"},
-			{Name: "merchant_id", Type: "string", Facet: ptr(true)},
+			{Name: "merchant_id", Type: "string", Facet: ptr(true), SymbolsToIndex: exactSymbols()},
 			{Name: "title", Type: "string"},
 			{Name: "description", Type: "string", Optional: ptr(true)},
-			{Name: "categories", Type: "string[]", Facet: ptr(true), Optional: ptr(true)},
+			{
+				Name:           "categories",
+				Type:           "string[]",
+				Facet:          ptr(true),
+				Optional:       ptr(true),
+				SymbolsToIndex: exactSymbols(),
+			},
 			{Name: "price_minor", Type: "int64", Sort: ptr(true), RangeIndex: ptr(true)},
 			{Name: "currency", Type: "string", Facet: ptr(true)},
 			{Name: "updated_at", Type: "int64", Sort: ptr(true)},
@@ -73,7 +87,13 @@ func merchantSchema(gen search.Generation) *api.CollectionSchema {
 			{Name: "display_name", Type: "string"},
 			{Name: "status", Type: "string", Facet: ptr(true)},
 			{Name: "may_sell", Type: "bool", Facet: ptr(true)},
-			{Name: "categories", Type: "string[]", Facet: ptr(true), Optional: ptr(true)},
+			{
+				Name:           "categories",
+				Type:           "string[]",
+				Facet:          ptr(true),
+				Optional:       ptr(true),
+				SymbolsToIndex: exactSymbols(),
+			},
 			{Name: "updated_at", Type: "int64", Sort: ptr(true)},
 		},
 	}
@@ -84,8 +104,8 @@ func orderSchema(gen search.Generation) *api.CollectionSchema {
 		Name: string(gen),
 		Fields: []api.Field{
 			{Name: "id", Type: "string"},
-			{Name: "buyer", Type: "string", Facet: ptr(true)},
-			{Name: "merchant_id", Type: "string", Facet: ptr(true)},
+			{Name: "buyer", Type: "string", Facet: ptr(true), SymbolsToIndex: exactSymbols()},
+			{Name: "merchant_id", Type: "string", Facet: ptr(true), SymbolsToIndex: exactSymbols()},
 			{Name: "number", Type: "string"},
 			{Name: "status", Type: "string", Facet: ptr(true)},
 			{Name: "line_titles", Type: "string[]", Optional: ptr(true)},

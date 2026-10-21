@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+set -eu
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HERE"
+
+go run ./tools/arglayout ./cmd ./internal ./tests ./tools

@@ -23,8 +23,10 @@ var (
 
 func product(t *testing.T, id, title string, at time.Time) search.ProductDoc {
 	t.Helper()
+
 	pid, err := search.NewProductID(id)
 	require.NoError(t, err)
+
 	return search.ProductDoc{ID: pid, Title: title, UpdatedAt: at}
 }
 
@@ -44,15 +46,7 @@ func TestSyncWalksEveryPage(t *testing.T) {
 	index := &searchtest.FakeIndex[search.ProductDoc]{LiveGeneration: "products_v1"}
 	checkpoint := &searchtest.FakeCheckpoint{}
 
-	syncer := indexing.NewSyncer(
-		search.Products,
-		source,
-		index,
-		checkpoint,
-		&searchtest.FakeLock{},
-		discard,
-		100,
-	)
+	syncer := indexing.NewSyncer(search.Products, source, index, checkpoint, &searchtest.FakeLock{}, discard, 100)
 	require.NoError(t, syncer.Once(context.Background()))
 
 	require.Len(t, index.Written["products_v1"], 2)
@@ -121,15 +115,7 @@ func TestSyncDoesNotAdvanceTheCursorWhenTheWriteFails(t *testing.T) {
 	index := &searchtest.FakeIndex[search.ProductDoc]{BulkErr: errors.New("index refused")}
 	checkpoint := &searchtest.FakeCheckpoint{}
 
-	syncer := indexing.NewSyncer(
-		search.Products,
-		source,
-		index,
-		checkpoint,
-		&searchtest.FakeLock{},
-		discard,
-		100,
-	)
+	syncer := indexing.NewSyncer(search.Products, source, index, checkpoint, &searchtest.FakeLock{}, discard, 100)
 	err := syncer.Once(context.Background())
 
 	require.Error(t, err)
@@ -174,15 +160,7 @@ func TestSyncHoldsTheCollectionForTheWholePass(t *testing.T) {
 	index := &searchtest.FakeIndex[search.ProductDoc]{LiveGeneration: "products_v1", Lock: lock}
 	checkpoint := &searchtest.FakeCheckpoint{Lock: lock}
 
-	syncer := indexing.NewSyncer(
-		search.Products,
-		source,
-		index,
-		checkpoint,
-		lock,
-		discard,
-		100,
-	)
+	syncer := indexing.NewSyncer(search.Products, source, index, checkpoint, lock, discard, 100)
 	require.NoError(t, syncer.Once(context.Background()))
 
 	require.Equal(t, []search.Collection{search.Products}, lock.Held)
@@ -208,15 +186,7 @@ func TestSyncWritesNothingWhenItCannotHoldTheCollection(t *testing.T) {
 	index := &searchtest.FakeIndex[search.ProductDoc]{LiveGeneration: "products_v1"}
 	checkpoint := &searchtest.FakeCheckpoint{}
 
-	syncer := indexing.NewSyncer(
-		search.Products,
-		source,
-		index,
-		checkpoint,
-		lock,
-		discard,
-		100,
-	)
+	syncer := indexing.NewSyncer(search.Products, source, index, checkpoint, lock, discard, 100)
 	err := syncer.Once(context.Background())
 
 	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
@@ -227,6 +197,7 @@ func TestSyncWritesNothingWhenItCannotHoldTheCollection(t *testing.T) {
 
 func TestSyncLogsARefusedRecordAndKeepsGoing(t *testing.T) {
 	var logged bytes.Buffer
+
 	log := slog.New(slog.NewJSONHandler(&logged, nil))
 
 	refusal := search.Refusal{
@@ -244,15 +215,7 @@ func TestSyncLogsARefusedRecordAndKeepsGoing(t *testing.T) {
 	index := &searchtest.FakeIndex[search.ProductDoc]{LiveGeneration: "products_v1"}
 	checkpoint := &searchtest.FakeCheckpoint{}
 
-	syncer := indexing.NewSyncer(
-		search.Products,
-		source,
-		index,
-		checkpoint,
-		&searchtest.FakeLock{},
-		log,
-		100,
-	)
+	syncer := indexing.NewSyncer(search.Products, source, index, checkpoint, &searchtest.FakeLock{}, log, 100)
 	require.NoError(t, syncer.Once(context.Background()))
 
 	require.Len(t, index.Written["products_v1"], 2, "one bad record must not hold back the rest")

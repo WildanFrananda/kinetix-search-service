@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,8 +21,10 @@ var noon = time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 
 func productID(t *testing.T, raw string) search.ProductID {
 	t.Helper()
+
 	id, err := search.NewProductID(raw)
 	require.NoError(t, err)
+
 	return id
 }
 
@@ -33,6 +36,7 @@ type harness struct {
 
 func newHarness(t *testing.T, indexedThrough, syncedAt time.Time, staleAfter time.Duration) *harness {
 	t.Helper()
+
 	h := &harness{searcher: &searchtest.FakeSearcher[search.ProductDoc]{}}
 	checkpoint := &searchtest.FakeCheckpoint{
 		Cursors: map[search.Collection]search.Cursor{
@@ -40,26 +44,24 @@ func newHarness(t *testing.T, indexedThrough, syncedAt time.Time, staleAfter tim
 		},
 		SavedAt: map[search.Collection]time.Time{search.Products: syncedAt},
 	}
-	finder := querying.NewFinder(
-		search.Products,
-		h.searcher,
-		checkpoint,
-		searchtest.FixedClock{At: noon},
-		staleAfter,
-	)
+	finder := querying.NewFinder(search.Products, h.searcher, checkpoint, searchtest.FixedClock{At: noon}, staleAfter)
 	h.server = httpapi.NewRouter(finder, func(context.Context) error { return h.ready })
+
 	return h
 }
 
 func (h *harness) get(t *testing.T, target string) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
+
 	rec := httptest.NewRecorder()
 	h.server.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
 
 	var body map[string]any
+
 	if rec.Body.Len() > 0 {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	}
+
 	return rec, body
 }
 
@@ -82,6 +84,7 @@ func TestASearchCarriesItsOwnFreshness(t *testing.T) {
 	rec, body := h.get(t, "/api/v1/products/search?q=sepatu")
 
 	require.Equal(t, http.StatusOK, rec.Code)
+
 	index, ok := body["index"].(map[string]any)
 	require.True(t, ok, "every response says how current it is")
 	require.Equal(t, float64(120), index["age_seconds"])
@@ -100,12 +103,7 @@ func TestAStaleIndexSaysSoInsteadOfLookingComplete(t *testing.T) {
 
 func TestAnOutageIsNotAnEmptyShop(t *testing.T) {
 	h := newHarness(t, noon, noon, time.Minute)
-	h.searcher.Err = search.Errf(
-		search.KindIndexUnavailable,
-		"typesense.Search",
-		nil,
-		"cluster unreachable",
-	)
+	h.searcher.Err = search.Errf(search.KindIndexUnavailable, "typesense.Search", nil, "cluster unreachable")
 
 	rec, body := h.get(t, "/api/v1/products/search?q=sepatu")
 
@@ -130,10 +128,7 @@ func TestAMalformedQueryIsTheCallersFault(t *testing.T) {
 func TestQueryParametersReachTheUseCase(t *testing.T) {
 	h := newHarness(t, noon, noon, time.Minute)
 
-	_, _ = h.get(
-		t,
-		"/api/v1/products/search?q=sepatu&limit=5&offset=10&sort=price_asc&category=sepatu&category=sandal",
-	)
+	_, _ = h.get(t, "/api/v1/products/search?q=sepatu&limit=5&offset=10&sort=price_asc&category=sepatu&category=sandal")
 
 	require.Len(t, h.searcher.Asked, 1)
 	asked := h.searcher.Asked[0]
@@ -144,14 +139,112 @@ func TestQueryParametersReachTheUseCase(t *testing.T) {
 	require.Equal(t, []string{"sepatu", "sandal"}, asked.Categories)
 }
 
-func TestARubbishLimitDoesNotRefuseTheSearch(t *testing.T) {
+func TestAPageThatCannotBeReadIsRefusedRatherThanReplaced(t *testing.T) {
+	for _, target := range []string{
+		"/api/v1/products/search?q=sepatu&limit=banyak",
+		"/api/v1/products/search?q=sepatu&limit=-1",
+		"/api/v1/products/search?q=sepatu&offset=-3",
+		"/api/v1/products/search?q=sepatu&offset=1.5",
+		"/api/v1/products/search?q=sepatu&offset=99999999999999999999",
+	} {
+		h := newHarness(t, noon, noon, time.Minute)
+
+		rec, body := h.get(t, target)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, target)
+		require.Equal(t, "malformed_query", body["error"], target)
+		require.Empty(t, h.searcher.Asked, target)
+	}
+}
+
+func TestAnUnknownSortIsRefusedRatherThanReplaced(t *testing.T) {
 	h := newHarness(t, noon, noon, time.Minute)
 
-	rec, _ := h.get(t, "/api/v1/products/search?q=sepatu&limit=banyak&offset=-3")
+	rec, body := h.get(t, "/api/v1/products/search?q=sepatu&sort=cheapest")
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, "malformed_query", body["error"])
+	require.Empty(t, h.searcher.Asked)
+}
+
+func TestAnAbsentPageAndSortTakeTheDefaults(t *testing.T) {
+	h := newHarness(t, noon, noon, time.Minute)
+
+	rec, _ := h.get(t, "/api/v1/products/search?q=sepatu&limit=&offset=&sort=")
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, search.DefaultPageSize, h.searcher.Asked[0].Page.Limit)
 	require.Equal(t, 0, h.searcher.Asked[0].Page.Offset)
+	require.Equal(t, search.RankByRelevance, h.searcher.Asked[0].Ranking)
+}
+
+func TestAnEmptyCategoryIsNoFilterAtAll(t *testing.T) {
+	h := newHarness(t, noon, noon, time.Minute)
+
+	rec, _ := h.get(t, "/api/v1/products/search?category=&category=%20%20&category=sepatu")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(
+		t,
+		[]string{"sepatu"},
+		h.searcher.Asked[0].Categories,
+		"an empty category matches no product, so sending one empties the shop",
+	)
+}
+
+func TestSuggestRefusesWhatSearchRefuses(t *testing.T) {
+	for _, target := range []string{
+		"/api/v1/products/suggest?q=sep%1b%5b31m",
+		"/api/v1/products/suggest?q=" + strings.Repeat("x", search.MaxQueryLength+1),
+		"/api/v1/products/suggest?q=sep&limit=banyak",
+		"/api/v1/products/suggest?q=sep&limit=-1",
+	} {
+		h := newHarness(t, noon, noon, time.Minute)
+
+		rec, body := h.get(t, target)
+
+		require.Equal(t, http.StatusBadRequest, rec.Code, target)
+		require.Equal(t, "malformed_query", body["error"], target)
+		require.Empty(t, h.searcher.Suggested, target)
+	}
+}
+
+func TestSuggestAndSearchCapTheLimitAlike(t *testing.T) {
+	h := newHarness(t, noon, noon, time.Minute)
+
+	_, _ = h.get(t, "/api/v1/products/search?q=sepatu&limit=500")
+	_, _ = h.get(t, "/api/v1/products/suggest?q=sep&limit=500")
+
+	require.Equal(t, search.MaxPageSize, h.searcher.Asked[0].Page.Limit)
+	require.Equal(t, []search.SuggestQuery{{Prefix: "sep", Limit: search.MaxPageSize}}, h.searcher.Suggested)
+}
+
+func TestFreshnessBeforeTheFirstSyncSaysNeverRatherThanYearOne(t *testing.T) {
+	h := newHarness(t, time.Time{}, time.Time{}, 10*time.Minute)
+
+	rec, body := h.get(t, "/api/v1/products/search?q=sepatu")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	index, ok := body["index"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, index, "indexed_through_ms")
+	require.Nil(t, index["indexed_through_ms"], "no record has been indexed")
+	require.Contains(t, index, "age_seconds")
+	require.Nil(t, index["age_seconds"], "no sync has completed, so there is no age to report")
+	require.Equal(t, true, index["stale"])
+}
+
+func TestASyncOverNothingHasAnAgeButNoWatermark(t *testing.T) {
+	h := newHarness(t, time.Time{}, noon.Add(-time.Minute), 10*time.Minute)
+
+	_, body := h.get(t, "/api/v1/products/search?q=sepatu")
+
+	index, ok := body["index"].(map[string]any)
+	require.True(t, ok)
+	require.Nil(t, index["indexed_through_ms"])
+	require.Equal(t, float64(60), index["age_seconds"])
+	require.Equal(t, false, index["stale"])
 }
 
 func TestAnEmptyQueryIsBrowsing(t *testing.T) {
@@ -198,22 +291,20 @@ func TestSuggestReturnsAnArrayRatherThanNull(t *testing.T) {
 }
 
 func TestSuggestWithNoPrefixAsksNothing(t *testing.T) {
-	h := newHarness(t, noon, noon, time.Minute)
+	for _, target := range []string{"/api/v1/products/suggest", "/api/v1/products/suggest?q=%20%20"} {
+		h := newHarness(t, noon, noon, time.Minute)
 
-	rec, _ := h.get(t, "/api/v1/products/suggest")
+		rec, body := h.get(t, target)
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Empty(t, h.searcher.Asked)
+		require.Equal(t, http.StatusOK, rec.Code, target)
+		require.Equal(t, []any{}, body["suggestions"], target)
+		require.Empty(t, h.searcher.Suggested, target)
+	}
 }
 
 func TestReadinessRefusesBeforeAnythingIsIndexed(t *testing.T) {
 	h := newHarness(t, noon, noon, time.Minute)
-	h.ready = search.Errf(
-		search.KindIndexUnavailable,
-		"searchd.ready",
-		nil,
-		"no generation has been promoted yet",
-	)
+	h.ready = search.Errf(search.KindIndexUnavailable, "searchd.ready", nil, "no generation has been promoted yet")
 
 	rec, body := h.get(t, "/health/ready")
 

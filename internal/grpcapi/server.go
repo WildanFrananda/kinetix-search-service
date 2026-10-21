@@ -27,13 +27,11 @@ func (s *Server) SearchProducts(
 	request *searchv1.SearchProductsRequest,
 ) (*searchv1.SearchProductsResponse, error) {
 	q, err := toQuery(request)
-
 	if err != nil {
 		return nil, toStatus(err)
 	}
 
 	results, err := s.products.Find(ctx, q)
-
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -45,8 +43,12 @@ func (s *Server) SuggestProducts(
 	ctx context.Context,
 	request *searchv1.SuggestProductsRequest,
 ) (*searchv1.SuggestProductsResponse, error) {
-	suggestions, err := s.products.Suggest(ctx, request.GetPrefix(), int(request.GetLimit()))
+	q, err := search.NewSuggestQuery(request.GetPrefix(), int(request.GetLimit()))
+	if err != nil {
+		return nil, toStatus(err)
+	}
 
+	suggestions, err := s.products.Suggest(ctx, q)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -70,7 +72,6 @@ func toQuery(request *searchv1.SearchProductsRequest) (search.Query, error) {
 
 	if raw := request.GetMerchantPrincipalId(); raw != "" {
 		merchant, err := search.NewMerchantID(raw)
-
 		if err != nil {
 			return search.Query{}, err
 		}
@@ -87,11 +88,10 @@ func rankingFrom(profile searchv1.RankingProfile) search.RankingProfile {
 		return search.RankByNewest
 	case searchv1.RankingProfile_RANKING_PROFILE_PRICE_ASC:
 		return search.RankByPriceAsc
-	case searchv1.RankingProfile_RANKING_PROFILE_RELEVANCE,
-		searchv1.RankingProfile_RANKING_PROFILE_UNSPECIFIED:
+	case searchv1.RankingProfile_RANKING_PROFILE_RELEVANCE, searchv1.RankingProfile_RANKING_PROFILE_UNSPECIFIED:
 		return search.RankByRelevance
 	default:
-		return search.RankByRelevance
+		return search.RankingProfile(profile.String())
 	}
 }
 
@@ -127,9 +127,10 @@ func toSearchResponse(results search.Results[search.ProductDoc]) *searchv1.Searc
 }
 
 func toFreshness(f search.Freshness) *searchv1.IndexFreshness {
-	out := &searchv1.IndexFreshness{
-		AgeSeconds: int64(f.Age.Seconds()),
-		Stale:      f.Stale,
+	out := &searchv1.IndexFreshness{Stale: f.Stale}
+
+	if f.Synced {
+		out.AgeSeconds = int64(f.Age.Seconds())
 	}
 
 	if !f.IndexedThrough.IsZero() {
@@ -150,10 +151,7 @@ func toFacets(in map[string][]search.FacetValue) []*searchv1.Facet {
 		facet := &searchv1.Facet{Field: field, Values: make([]*searchv1.FacetValue, 0, len(values))}
 
 		for _, v := range values {
-			facet.Values = append(
-				facet.Values,
-				&searchv1.FacetValue{Value: v.Value, Count: v.Count},
-			)
+			facet.Values = append(facet.Values, &searchv1.FacetValue{Value: v.Value, Count: v.Count})
 		}
 
 		out = append(out, facet)

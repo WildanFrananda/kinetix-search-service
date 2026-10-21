@@ -43,7 +43,7 @@ internal/wiring/        the dig providers; the only package besides cmd/ that im
 tests/search/           tests for internal/search
 tests/querying/         tests for internal/querying
 tests/indexing/         tests for internal/indexing
-tests/typesense/        tests for the adapter's pure parts
+tests/typesense/        tests for the adapter's pure parts, and what it sends a fake engine
 tests/integration/      the only tests that talk to a real engine
 tests/wiring/           resolves every dig graph, so wrong wiring fails here and not at start-up
 tests/searchtest/       hand-written fakes
@@ -101,6 +101,17 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 - **`golangci-lint`** with errcheck, errorlint, contextcheck and gosec among others. Verified to
   fire rather than merely report zero: an ignored `checkpoint.Save` is caught by errcheck.
 - **`gofmt` and `goimports`.** Not negotiable in Go, and that is a feature.
+- **The house layout is enforced, not remembered** (the user's rule for every repository, brought
+  here from the notary on 2026-10-21). A call, composite literal or signature that does not fit on
+  one line puts every element on its own line, the closing bracket alone; one that fits stays on
+  one line. A blank line between contexts, and an assignment cuddled with the check that reads it.
+  Three tools hold it: `golines` at 120 columns and `wsl_v5`, both in `.golangci.yml`
+  (`golangci-lint fmt` and `golangci-lint run --fix` repair them), and `bin/check-layout`, which
+  runs `tools/arglayout` (`go run ./tools/arglayout -fix ./cmd ./internal ./tests ./tools`
+  rewrites). It is the notary's, plus one change: it skips a file carrying Go's `Code generated …
+  DO NOT EDIT.` header, because sqlc writes `internal/postgres/queries.sql.go` beside hand-written
+  code and its next `sqlc generate` would undo any reflow. Both CIs run it in the lint job. No tool joins a wrapped
+  call that would fit on one line; that one is still kept by hand.
 - **`bin/check-boundaries`** fails when anything outside `cmd/` and `internal/wiring` imports dig.
   Controlled both ways: a dig import in `internal/system` fails it.
 - **`bin/test`** runs the suite with the coverage flags the `tests/` layout requires.
@@ -150,6 +161,51 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
   empty one. Measured from the record instead, a catalogue nobody edits for a week reports itself
   stale for ever while the sync is confirming every thirty seconds that it is caught up — which is
   what production did on 2026-09-23, a healthy index telling every caller it could not be trusted.
+  Before the first completed sync there is no `saved_at` and nothing to measure: `Freshness.Synced`
+  is false, `stale` is true, and HTTP answers `indexed_through_ms` and `age_seconds` as `null`
+  rather than ages measured from year one (−62135596800000 ms, about 9.2e9 s, until 2026-10-21).
+  A sync over an empty source has an age but no watermark, so `indexed_through_ms` alone is `null`.
+  `search/v1` cannot say null for `age_seconds`; gRPC leaves `indexed_through` unset and sends 0
+  with `stale: true`.
+
+- **Bad input is refused, never replaced, and the rules live once, in the core.** `search.NewQuery`
+  and `search.NewSuggestQuery` serve both edges and both operations. A limit of 0 (absent, or
+  proto3's unset) takes the default (24 for search, 10 for suggest), above 100 it is capped at 100,
+  and a negative one is `malformed_query`; a negative offset is too, and HTTP refuses any `limit`
+  or `offset` that is not a whole number. An unknown `sort` (or gRPC ranking) is refused. Text,
+  prefix and each category are trimmed and held to the same length and control-byte rules; an
+  empty category is dropped, because Typesense answers a filter on an empty category with **200
+  and zero hits** — the empty shop again, not an error. An empty prefix suggests nothing without asking
+  the engine. Until 2026-10-21 suggest skipped the text rules and reset a limit over 100 to 10.
+
+- **The offset is sent as an offset.** The searcher asks Typesense for `offset` and `limit`,
+  never `page` and `per_page`: `page = offset/limit + 1` rounded every offset down to a multiple
+  of the limit, so `offset=50&limit=24` answered from the 49th hit.
+
+- **An engine refusal is the caller's fault; an engine failure is not.** Typesense 400 and 422
+  from a search or a suggestion are `malformed_query` (400 / `InvalidArgument`): a request over the
+  engine's 4000-character query string (a few hundred categories) is the caller's. 404 (no collection behind the alias), 401, 5xx and transport
+  errors stay `index_unavailable`. A 400 can also mean the adapter named a field the schema lacks,
+  which would then read as the caller's fault, so the engine tests exercise every filter and sort
+  field the products searcher names; an edge for merchants or orders needs the same.
+  Indexing keeps every engine error as `index_unavailable`. `typesense.Connect` refuses a zero or
+  negative timeout rather than choosing one; config supplies it (`SEARCH_TYPESENSE_TIMEOUT_MS`).
+
+- **A filter matches its value exactly, apart from case.** Typesense's `:=` on a string field
+  compares tokens, and by default it drops punctuation from both sides: `c1` matched `c1]`, `(c1`,
+  `!c1` and `c1*`, and `Pakaian (Pria)` matched `pakaian pria` (measured on 30.2, 2026-10-21). It
+  was never the backtick quoting. Every filter field (`categories`, `merchant_id`, `buyer`) is
+  therefore created with field-level `symbols_to_index` holding all ASCII punctuation **except the
+  backtick**: with the backtick indexed too, the scalar form (`merchant_id:=` and a quoted value)
+  matches nothing.
+  Three values cannot be matched exactly however they are written, so the adapter refuses them as
+  `malformed_query` before asking: one holding a backtick or a backslash (a backslash escapes the
+  closing quote), and one ending in `*` (a prefix wildcard inside `[...]`). Case still folds, which
+  the engine does not let a filter change; principals are UUIDs, so the orders scope is unaffected.
+  The cost: text search on `categories` now sees punctuation, so `pria` no longer finds
+  `Pakaian (Pria)` through that field (titles still carry it). A schema change reaches only a
+  generation built after it: the live index keeps the old behaviour until `reindex products` and
+  `reindex merchants` run.
 
 - **The cursor is saved only after the write lands.** A cursor saved first skips exactly the page
   that failed, and the gap is never noticed.

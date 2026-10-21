@@ -23,11 +23,14 @@ func (f *FakeSource[D]) ChangedSince(_ context.Context, cur search.Cursor, _ int
 	if f.Err != nil {
 		return search.Changes[D]{}, f.Err
 	}
+
 	if f.served >= len(f.Pages) {
 		return search.Changes[D]{}, nil
 	}
+
 	page := f.Pages[f.served]
 	f.served++
+
 	return page, nil
 }
 
@@ -35,5 +38,6 @@ func (f *FakeSource[D]) Count(context.Context) (int64, error) {
 	if f.CountErr != nil {
 		return 0, f.CountErr
 	}
+
 	return f.Total, nil
 }

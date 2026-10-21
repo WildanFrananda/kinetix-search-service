@@ -58,6 +58,7 @@ func TestHoldingOneCollectionDoesNotHoldAnother(t *testing.T) {
 
 	products, err := lock.Hold(ctx, search.Products)
 	require.NoError(t, err)
+
 	defer products()
 
 	waiting, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -74,6 +75,7 @@ func TestAHolderWhoseSessionDiesLetsGo(t *testing.T) {
 
 	held, err := lock.Hold(ctx, search.Merchants)
 	require.NoError(t, err)
+
 	defer held()
 
 	_, err = pool.Exec(

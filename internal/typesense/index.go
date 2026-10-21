@@ -37,9 +37,11 @@ func (i *Index[D]) CreateGeneration(ctx context.Context, gen search.Generation) 
 			i.collection,
 		)
 	}
+
 	if _, err := i.client.Collections().Create(ctx, schema); err != nil {
 		return fail("typesense.CreateGeneration", err, "creating %s", gen)
 	}
+
 	return nil
 }
 
@@ -54,6 +56,7 @@ func (i *Index[D]) Bulk(ctx context.Context, gen search.Generation, docs []D) er
 	}
 
 	action := api.IndexAction("upsert")
+
 	results, err := i.client.Collection(string(gen)).Documents().Import(
 		ctx,
 		payload,
@@ -67,6 +70,7 @@ func (i *Index[D]) Bulk(ctx context.Context, gen search.Generation, docs []D) er
 		if r == nil || r.Success {
 			continue
 		}
+
 		return search.Errf(
 			search.KindIndexUnavailable,
 			"typesense.Bulk",
@@ -78,6 +82,7 @@ func (i *Index[D]) Bulk(ctx context.Context, gen search.Generation, docs []D) er
 			r.Error,
 		)
 	}
+
 	return nil
 }
 
@@ -88,9 +93,11 @@ func (i *Index[D]) Remove(ctx context.Context, gen search.Generation, ids []stri
 			if notFound(err) {
 				continue
 			}
+
 			return fail("typesense.Remove", err, "deleting %q from %s", id, gen)
 		}
 	}
+
 	return nil
 }
 
@@ -99,6 +106,7 @@ func (i *Index[D]) CountIn(ctx context.Context, gen search.Generation) (int64, e
 	if err != nil {
 		return 0, fail("typesense.CountIn", err, "reading %s", gen)
 	}
+
 	if got.NumDocuments == nil {
 		return 0, search.Errf(
 			search.KindIndexUnavailable,
@@ -108,6 +116,7 @@ func (i *Index[D]) CountIn(ctx context.Context, gen search.Generation) (int64, e
 			gen,
 		)
 	}
+
 	return *got.NumDocuments, nil
 }
 
@@ -122,6 +131,7 @@ func (i *Index[D]) Promote(ctx context.Context, gen search.Generation) error {
 	if err != nil {
 		return fail("typesense.Promote", err, "pointing alias %s at %s", i.collection, gen)
 	}
+
 	return nil
 }
 
@@ -131,8 +141,10 @@ func (i *Index[D]) Live(ctx context.Context) (search.Generation, error) {
 		if notFound(err) {
 			return "", nil
 		}
+
 		return "", fail("typesense.Live", err, "reading alias %s", i.collection)
 	}
+
 	return search.Generation(alias.CollectionName), nil
 }
 

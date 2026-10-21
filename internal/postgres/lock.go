@@ -43,13 +43,7 @@ func (l *Lock) Hold(ctx context.Context, col search.Collection) (func(), error) 
 	if err := New(tx).HoldCollection(ctx, string(col)); err != nil {
 		release()
 
-		return nil, search.Errf(
-			search.KindDependencyUnavailable,
-			"postgres.Lock",
-			err,
-			"waiting for the %s lock",
-			col,
-		)
+		return nil, search.Errf(search.KindDependencyUnavailable, "postgres.Lock", err, "waiting for the %s lock", col)
 	}
 
 	return release, nil

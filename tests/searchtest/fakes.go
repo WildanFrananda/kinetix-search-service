@@ -8,9 +8,10 @@ import (
 )
 
 type FakeSearcher[D any] struct {
-	Results search.Results[D]
-	Err     error
-	Asked   []search.Query
+	Results   search.Results[D]
+	Err       error
+	Asked     []search.Query
+	Suggested []search.SuggestQuery
 }
 
 func (f *FakeSearcher[D]) Search(_ context.Context, q search.Query) (search.Results[D], error) {
@@ -18,10 +19,13 @@ func (f *FakeSearcher[D]) Search(_ context.Context, q search.Query) (search.Resu
 	if f.Err != nil {
 		return search.Results[D]{}, f.Err
 	}
+
 	return f.Results, nil
 }
 
-func (f *FakeSearcher[D]) Suggest(context.Context, string, int) ([]string, error) {
+func (f *FakeSearcher[D]) Suggest(_ context.Context, q search.SuggestQuery) ([]string, error) {
+	f.Suggested = append(f.Suggested, q)
+
 	return nil, nil
 }
 
@@ -46,10 +50,7 @@ type FakeCheckpoint struct {
 
 var _ search.Checkpoint = (*FakeCheckpoint)(nil)
 
-func (f *FakeCheckpoint) Load(
-	_ context.Context,
-	c search.Collection,
-) (search.Progress, error) {
+func (f *FakeCheckpoint) Load(_ context.Context, c search.Collection) (search.Progress, error) {
 	return search.Progress{Cursor: f.Cursors[c], SavedAt: f.SavedAt[c]}, f.Err
 }
 
@@ -57,8 +58,10 @@ func (f *FakeCheckpoint) Save(_ context.Context, c search.Collection, cur search
 	if f.Cursors == nil {
 		f.Cursors = map[search.Collection]search.Cursor{}
 	}
+
 	f.Cursors[c] = cur
 	f.Saved = append(f.Saved, cur)
 	f.SavedHeld = append(f.SavedHeld, f.Lock.holding())
+
 	return nil
 }

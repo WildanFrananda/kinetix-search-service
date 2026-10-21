@@ -41,17 +41,14 @@ func TestACheckpointKeepsItsTransaction(t *testing.T) {
 	pool, ctx := migrated(t)
 	checkpoint := postgres.NewCheckpoint(pool)
 	noon := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	cursor := search.Cursor{TransactionID: 812, LastID: "SHOE-3", UpdatedThrough: noon}
 
-	require.NoError(t, checkpoint.Save(ctx, search.Products, search.Cursor{
-		TransactionID:  812,
-		LastID:         "SHOE-3",
-		UpdatedThrough: noon,
-	}))
+	require.NoError(t, checkpoint.Save(ctx, search.Products, cursor))
 
 	progress, err := checkpoint.Load(ctx, search.Products)
 
 	require.NoError(t, err)
-	require.Equal(t, search.Cursor{TransactionID: 812, LastID: "SHOE-3", UpdatedThrough: noon}, progress.Cursor)
+	require.Equal(t, cursor, progress.Cursor)
 }
 
 func TestACheckpointFromBeforeTheTransactionCursorStartsTheWalkAgain(t *testing.T) {
@@ -77,12 +74,10 @@ func TestTheIndexedThroughWatermarkNeverMovesBack(t *testing.T) {
 	pool, ctx := migrated(t)
 	checkpoint := postgres.NewCheckpoint(pool)
 	noon := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	earlier := search.Cursor{TransactionID: 701, UpdatedThrough: noon.Add(-time.Hour)}
 
 	require.NoError(t, checkpoint.Save(ctx, search.Merchants, search.Cursor{TransactionID: 700, UpdatedThrough: noon}))
-	require.NoError(t, checkpoint.Save(ctx, search.Merchants, search.Cursor{
-		TransactionID:  701,
-		UpdatedThrough: noon.Add(-time.Hour),
-	}))
+	require.NoError(t, checkpoint.Save(ctx, search.Merchants, earlier))
 
 	progress, err := checkpoint.Load(ctx, search.Merchants)
 
@@ -100,4 +95,26 @@ func TestACheckpointRefusesATransactionItCannotStore(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, search.KindDependencyUnavailable, search.KindOf(err))
+}
+
+func TestACheckpointOverAnEmptySourceKeepsNoWatermark(t *testing.T) {
+	pool, ctx := migrated(t)
+	checkpoint := postgres.NewCheckpoint(pool)
+
+	require.NoError(t, checkpoint.Save(ctx, search.Products, search.Cursor{TransactionID: 9}))
+
+	progress, err := checkpoint.Load(ctx, search.Products)
+
+	require.NoError(t, err)
+	require.True(t, progress.Cursor.UpdatedThrough.IsZero(), "nothing indexed reads back as nothing, not as a date")
+	require.False(t, progress.SavedAt.IsZero())
+}
+
+func TestACollectionNeverSyncedHasNoProgress(t *testing.T) {
+	pool, ctx := migrated(t)
+
+	progress, err := postgres.NewCheckpoint(pool).Load(ctx, search.Orders)
+
+	require.NoError(t, err)
+	require.True(t, progress.SavedAt.IsZero())
 }

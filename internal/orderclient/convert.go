@@ -52,12 +52,9 @@ func ToChanges(response *orderv1.OrdersChangedSinceResponse) search.Changes[sear
 
 	for _, o := range response.GetUpserted() {
 		doc, err := ToDoc(o)
-
 		if err != nil {
-			changes.Refused = append(
-				changes.Refused,
-				search.Refusal{ID: o.GetOrderNumber(), Reason: err},
-			)
+			changes.Refused = append(changes.Refused, search.Refusal{ID: o.GetOrderNumber(), Reason: err})
+
 			continue
 		}
 
@@ -69,7 +66,6 @@ func ToChanges(response *orderv1.OrdersChangedSinceResponse) search.Changes[sear
 
 func ToDoc(o *orderv1.OrderRecord) (search.OrderDoc, error) {
 	id, err := search.NewOrderID(o.GetOrderNumber())
-
 	if err != nil {
 		return search.OrderDoc{}, search.Errf(
 			search.KindCorruptRecord,
@@ -80,7 +76,6 @@ func ToDoc(o *orderv1.OrderRecord) (search.OrderDoc, error) {
 	}
 
 	buyer, err := search.NewBuyerID(o.GetBuyerPrincipalId())
-
 	if err != nil {
 		return search.OrderDoc{}, search.Errf(
 			search.KindCorruptRecord,
@@ -92,7 +87,6 @@ func ToDoc(o *orderv1.OrderRecord) (search.OrderDoc, error) {
 	}
 
 	merchant, err := search.NewMerchantID(o.GetMerchantPrincipalId())
-
 	if err != nil {
 		merchant = search.MerchantID{}
 	}

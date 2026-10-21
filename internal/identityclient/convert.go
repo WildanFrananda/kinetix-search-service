@@ -51,12 +51,9 @@ func ToChanges(response *identityv1.MerchantsChangedSinceResponse) search.Change
 
 	for _, m := range response.GetUpserted() {
 		doc, err := ToDoc(m)
-
 		if err != nil {
-			changes.Refused = append(
-				changes.Refused,
-				search.Refusal{ID: m.GetPrincipalId(), Reason: err},
-			)
+			changes.Refused = append(changes.Refused, search.Refusal{ID: m.GetPrincipalId(), Reason: err})
+
 			continue
 		}
 
@@ -68,7 +65,6 @@ func ToChanges(response *identityv1.MerchantsChangedSinceResponse) search.Change
 
 func ToDoc(m *identityv1.MerchantRecord) (search.MerchantDoc, error) {
 	id, err := search.NewMerchantID(m.GetPrincipalId())
-
 	if err != nil {
 		return search.MerchantDoc{}, search.Errf(
 			search.KindCorruptRecord,

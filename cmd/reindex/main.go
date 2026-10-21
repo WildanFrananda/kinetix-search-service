@@ -60,7 +60,6 @@ func run(log *slog.Logger) error {
 	}
 
 	collections, err := wanted(os.Args[1])
-
 	if err != nil {
 		return err
 	}
@@ -74,6 +73,7 @@ func run(log *slog.Logger) error {
 	}
 
 	var pool *pgxpool.Pool
+
 	err = container.Invoke(func(p *pgxpool.Pool) {
 		pool = p
 	})
@@ -84,6 +84,7 @@ func run(log *slog.Logger) error {
 
 	for _, collection := range collections {
 		started := time.Now()
+
 		log.InfoContext(ctx, "reindex starting", "collection", string(collection))
 
 		if err := rebuild(ctx, container, collection); err != nil {

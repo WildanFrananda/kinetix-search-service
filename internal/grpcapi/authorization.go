@@ -51,11 +51,7 @@ func Authorize(allowed map[string]struct{}) grpc.UnaryServerInterceptor {
 		}
 
 		if _, ok := allowed[name]; !ok {
-			return nil, status.Errorf(
-				codes.PermissionDenied,
-				"'%s' is not on this service's caller list",
-				name,
-			)
+			return nil, status.Errorf(codes.PermissionDenied, "'%s' is not on this service's caller list", name)
 		}
 
 		return handler(ctx, req)

@@ -2,6 +2,7 @@ package grpcapi_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ var noon = time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 
 func productID(t *testing.T, raw string) search.ProductID {
 	t.Helper()
+
 	id, err := search.NewProductID(raw)
 	require.NoError(t, err)
 
@@ -33,6 +35,7 @@ func newServer(
 	staleAfter time.Duration,
 ) (*grpcapi.Server, *searchtest.FakeSearcher[search.ProductDoc]) {
 	t.Helper()
+
 	searcher := &searchtest.FakeSearcher[search.ProductDoc]{}
 	checkpoint := &searchtest.FakeCheckpoint{
 		Cursors: map[search.Collection]search.Cursor{
@@ -40,13 +43,7 @@ func newServer(
 		},
 		SavedAt: map[search.Collection]time.Time{search.Products: syncedAt},
 	}
-	finder := querying.NewFinder(
-		search.Products,
-		searcher,
-		checkpoint,
-		searchtest.FixedClock{At: noon},
-		staleAfter,
-	)
+	finder := querying.NewFinder(search.Products, searcher, checkpoint, searchtest.FixedClock{At: noon}, staleAfter)
 
 	return grpcapi.NewServer(finder), searcher
 }
@@ -54,10 +51,7 @@ func newServer(
 func TestFreshnessTravelsOverGRPCToo(t *testing.T) {
 	server, _ := newServer(t, noon.Add(-2*time.Minute), noon.Add(-2*time.Minute), 10*time.Minute)
 
-	response, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu"},
-	)
+	response, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "sepatu"})
 
 	require.NoError(t, err)
 	require.NotNil(t, response.GetFreshness())
@@ -68,9 +62,7 @@ func TestFreshnessTravelsOverGRPCToo(t *testing.T) {
 func TestAStaleIndexIsReportedNotHidden(t *testing.T) {
 	server, _ := newServer(t, noon.Add(-2*time.Hour), noon.Add(-2*time.Hour), 10*time.Minute)
 
-	response, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu"})
+	response, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "sepatu"})
 
 	require.NoError(t, err)
 	require.True(t, response.GetFreshness().GetStale())
@@ -78,35 +70,19 @@ func TestAStaleIndexIsReportedNotHidden(t *testing.T) {
 
 func TestAnOutageIsUnavailableNotAnEmptyResult(t *testing.T) {
 	server, searcher := newServer(t, noon, noon, time.Minute)
-	searcher.Err = search.Errf(
-		search.KindIndexUnavailable,
-		"typesense.Search",
-		nil,
-		"cluster unreachable",
-	)
+	searcher.Err = search.Errf(search.KindIndexUnavailable, "typesense.Search", nil, "cluster unreachable")
 
-	_, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu"},
-	)
+	_, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "sepatu"})
 
 	require.Error(t, err)
-	require.Equal(
-		t,
-		codes.Unavailable,
-		status.Code(err),
-		"an empty response would tell a caller the shop has nothing",
-	)
+	require.Equal(t, codes.Unavailable, status.Code(err), "an empty response would tell a caller the shop has nothing")
 	require.Contains(t, status.Convert(err).Message(), "index_unavailable")
 }
 
 func TestAMalformedQueryIsInvalidArgument(t *testing.T) {
 	server, _ := newServer(t, noon, noon, time.Minute)
 
-	_, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu\x1b[31m"},
-	)
+	_, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "sepatu\x1b[31m"})
 
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -114,10 +90,7 @@ func TestAMalformedQueryIsInvalidArgument(t *testing.T) {
 func TestAnUnusableMerchantFilterIsRefused(t *testing.T) {
 	server, searcher := newServer(t, noon, noon, time.Minute)
 
-	_, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{MerchantPrincipalId: "   "},
-	)
+	_, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{MerchantPrincipalId: "   "})
 
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Empty(t, searcher.Asked, "a refused filter must not reach the engine")
@@ -133,10 +106,9 @@ func TestRankingProfilesMapAcross(t *testing.T) {
 
 	for wire, want := range cases {
 		server, searcher := newServer(t, noon, noon, time.Minute)
-		_, err := server.SearchProducts(
-			context.Background(),
-			&searchv1.SearchProductsRequest{Text: "x", Ranking: wire},
-		)
+
+		_, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "x", Ranking: wire})
+
 		require.NoError(t, err)
 		require.Equal(t, want, searcher.Asked[0].Ranking, wire.String())
 	}
@@ -155,6 +127,64 @@ func TestThePageIsStillCapped(t *testing.T) {
 	require.Equal(t, 10, searcher.Asked[0].Page.Offset)
 }
 
+func TestANegativePageIsInvalidArgument(t *testing.T) {
+	for _, page := range []*searchv1.Page{{Offset: -1}, {Limit: -1}} {
+		server, searcher := newServer(t, noon, noon, time.Minute)
+
+		_, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "x", Page: page})
+
+		require.Equal(t, codes.InvalidArgument, status.Code(err), page.String())
+		require.Empty(t, searcher.Asked, page.String())
+	}
+}
+
+func TestAnUnknownRankingIsInvalidArgument(t *testing.T) {
+	server, searcher := newServer(t, noon, noon, time.Minute)
+
+	_, err := server.SearchProducts(
+		context.Background(),
+		&searchv1.SearchProductsRequest{Text: "x", Ranking: searchv1.RankingProfile(42)},
+	)
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Empty(t, searcher.Asked)
+}
+
+func TestFreshnessBeforeTheFirstSyncIsStaleWithNoAge(t *testing.T) {
+	server, _ := newServer(t, time.Time{}, time.Time{}, 10*time.Minute)
+
+	response, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "x"})
+
+	require.NoError(t, err)
+	require.Nil(t, response.GetFreshness().GetIndexedThrough())
+	require.Zero(t, response.GetFreshness().GetAgeSeconds(), "an age measured from year one is no age at all")
+	require.True(t, response.GetFreshness().GetStale())
+}
+
+func TestSuggestRefusesWhatSearchRefuses(t *testing.T) {
+	for _, request := range []*searchv1.SuggestProductsRequest{
+		{Prefix: "sep\x1b[31m"},
+		{Prefix: strings.Repeat("x", search.MaxQueryLength+1)},
+		{Prefix: "sep", Limit: -1},
+	} {
+		server, searcher := newServer(t, noon, noon, time.Minute)
+
+		_, err := server.SuggestProducts(context.Background(), request)
+
+		require.Equal(t, codes.InvalidArgument, status.Code(err), request.String())
+		require.Empty(t, searcher.Suggested, request.String())
+	}
+}
+
+func TestSuggestCapsTheLimitLikeSearch(t *testing.T) {
+	server, searcher := newServer(t, noon, noon, time.Minute)
+
+	_, err := server.SuggestProducts(context.Background(), &searchv1.SuggestProductsRequest{Prefix: "sep", Limit: 500})
+
+	require.NoError(t, err)
+	require.Equal(t, []search.SuggestQuery{{Prefix: "sep", Limit: search.MaxPageSize}}, searcher.Suggested)
+}
+
 func TestAHitCarriesTheSharedMoneyType(t *testing.T) {
 	server, searcher := newServer(t, noon, noon, time.Minute)
 	searcher.Results = search.Results[search.ProductDoc]{
@@ -171,10 +201,7 @@ func TestAHitCarriesTheSharedMoneyType(t *testing.T) {
 		}},
 	}
 
-	response, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{Text: "sepatu"},
-	)
+	response, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "sepatu"})
 
 	require.NoError(t, err)
 	require.Len(t, response.GetHits(), 1)
@@ -193,10 +220,7 @@ func TestFacetsCrossTheWire(t *testing.T) {
 		},
 	}
 
-	response, err := server.SearchProducts(
-		context.Background(),
-		&searchv1.SearchProductsRequest{Text: "x"},
-	)
+	response, err := server.SearchProducts(context.Background(), &searchv1.SearchProductsRequest{Text: "x"})
 
 	require.NoError(t, err)
 	require.Len(t, response.GetFacets(), 1)
