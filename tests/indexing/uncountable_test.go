@@ -14,6 +14,7 @@ import (
 
 func merchant(t *testing.T, id, name string, at time.Time) search.MerchantDoc {
 	t.Helper()
+
 	principal, err := search.NewMerchantID(id)
 	require.NoError(t, err)
 

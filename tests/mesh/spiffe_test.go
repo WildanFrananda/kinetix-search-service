@@ -111,9 +111,11 @@ func TestAnAllowListIsReadAsACommaSeparatedSet(t *testing.T) {
 	if _, ok := allowed["order"]; !ok {
 		t.Fatal("order is not on the list")
 	}
+
 	if _, ok := allowed["backoffice"]; !ok {
 		t.Fatal("backoffice is not on the list")
 	}
+
 	if len(allowed) != 2 {
 		t.Fatalf("want two names, got %v", allowed)
 	}

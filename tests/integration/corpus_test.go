@@ -19,6 +19,7 @@ func TestLoadCorpusForMeasurement(t *testing.T) {
 	if size == "" {
 		t.Skip("set KINETIX_TYPESENSE_CORPUS to a document count to load a measurement corpus")
 	}
+
 	total, err := strconv.Atoi(size)
 	require.NoError(t, err)
 
@@ -63,7 +64,9 @@ func TestLoadCorpusForMeasurement(t *testing.T) {
 	categories := []string{"sepatu", "sandal", "tas", "pakaian", "aksesoris"}
 
 	source := rand.New(rand.NewSource(20260921))
+
 	const batchSize = 2000
+
 	started := time.Now()
 
 	for offset := 0; offset < total; offset += batchSize {
@@ -86,11 +89,13 @@ func TestLoadCorpusForMeasurement(t *testing.T) {
 					adjectives[source.Intn(len(adjectives))],
 					offset+i,
 				),
-				Description: "Deskripsi produk nomor " + strconv.Itoa(offset+i) + ". Bahan berkualitas, pengiriman cepat dari seluruh Indonesia.",
-				Categories:  []string{categories[source.Intn(len(categories))]},
-				PriceMinor:  int64(source.Intn(5_000_000) + 10_000),
-				Currency:    "IDR",
-				UpdatedAt:   time.Now().UTC().Add(-time.Duration(source.Intn(90*24)) * time.Hour),
+				Description: "Deskripsi produk nomor " + strconv.Itoa(
+					offset+i,
+				) + ". Bahan berkualitas, pengiriman cepat dari seluruh Indonesia.",
+				Categories: []string{categories[source.Intn(len(categories))]},
+				PriceMinor: int64(source.Intn(5_000_000) + 10_000),
+				Currency:   "IDR",
+				UpdatedAt:  time.Now().UTC().Add(-time.Duration(source.Intn(90*24)) * time.Hour),
 			})
 		}
 
@@ -106,6 +111,7 @@ func TestLoadCorpusForMeasurement(t *testing.T) {
 
 	q, err := search.NewQuery("sepatu kulit")
 	require.NoError(t, err)
+
 	queried := time.Now()
 	res, err := ts.searcher.Search(ctx, q)
 	require.NoError(t, err)

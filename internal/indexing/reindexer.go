@@ -49,11 +49,11 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 	}
 
 	counted, countable := r.source.(search.Counter)
+
 	var expected int64
 
 	if countable {
 		total, err := counted.Count(ctx)
-
 		if err != nil {
 			return err
 		}
@@ -61,9 +61,11 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 		expected = total
 	}
 
-	var sent int64
-	var refused int64
-	var cur search.Cursor
+	var (
+		sent    int64
+		refused int64
+		cur     search.Cursor
+	)
 
 	for {
 		changes, err := r.source.ChangedSince(ctx, cur, r.pageSize)
@@ -98,6 +100,7 @@ func (r *Reindexer[D]) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	if indexed < expected {
 		return search.Errf(
 			search.KindIndexUnavailable,

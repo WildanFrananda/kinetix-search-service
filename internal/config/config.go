@@ -52,10 +52,7 @@ func FromEnvironment() (Config, error) {
 	}
 
 	if len(missing) > 0 {
-		return Config{}, fmt.Errorf(
-			"these environment variables must be set:\n  %s",
-			strings.Join(missing, "\n  "),
-		)
+		return Config{}, fmt.Errorf("these environment variables must be set:\n  %s", strings.Join(missing, "\n  "))
 	}
 
 	return cfg, nil
@@ -66,6 +63,7 @@ func required(name string, missing *[]string) string {
 	if value == "" {
 		*missing = append(*missing, name)
 	}
+
 	return value
 }
 
@@ -82,10 +80,12 @@ func number(name string, fallback int) int {
 	if raw == "" {
 		return fallback
 	}
+
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
 		return fallback
 	}
+
 	return value
 }
 

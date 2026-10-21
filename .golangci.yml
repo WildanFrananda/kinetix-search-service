@@ -17,6 +17,7 @@ linters:
     - bodyclose     # matters once the Typesense and gRPC adapters land
     - contextcheck  # every outbound call carries the request's context, or the deadline is lost
     - errorlint     # errors.As/Is rather than type assertions, which is what KindOf depends on
+    - wsl_v5
 
   settings:
     errcheck:
@@ -42,3 +43,13 @@ formatters:
   enable:
     - gofmt
     - goimports
+    - golines
+  settings:
+    golines:
+      max-len: 120
+      shorten-comments: false
+      reformat-tags: false
+  exclusions:
+    paths:
+      - contracts/
+      - internal/contractgen/

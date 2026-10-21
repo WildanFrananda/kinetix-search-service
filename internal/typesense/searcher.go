@@ -27,7 +27,6 @@ func NewSearcher[D any](
 
 func (s *Searcher[D]) Search(ctx context.Context, q search.Query) (search.Results[D], error) {
 	fields, weights := QueryFieldsFor(s.collection)
-	page, perPage := PageFor(q.Page)
 
 	text := q.Text
 	if text == "" {
@@ -39,12 +38,17 @@ func (s *Searcher[D]) Search(ctx context.Context, q search.Query) (search.Result
 		QueryBy:              &fields,
 		QueryByWeights:       &weights,
 		SortBy:               ptr(SortFor(s.collection, q.Ranking)),
-		Page:                 &page,
-		PerPage:              &perPage,
+		Offset:               ptr(q.Page.Offset),
+		Limit:                ptr(q.Page.Limit),
 		PrioritizeExactMatch: ptr(true),
 	}
 
-	if filter := FilterFor(s.collection, q); filter != "" {
+	filter, err := FilterFor(s.collection, q)
+	if err != nil {
+		return search.Results[D]{}, err
+	}
+
+	if filter != "" {
 		params.FilterBy = &filter
 	}
 
@@ -54,7 +58,7 @@ func (s *Searcher[D]) Search(ctx context.Context, q search.Query) (search.Result
 
 	res, err := s.client.Collection(string(s.collection)).Documents().Search(ctx, params)
 	if err != nil {
-		return search.Results[D]{}, fail("typesense.Search", err, "searching %s", s.collection)
+		return search.Results[D]{}, failQuery("typesense.Search", err, "searching %s", s.collection)
 	}
 
 	return s.toResults(res)
@@ -69,35 +73,44 @@ func (s *Searcher[D]) toResults(res *api.SearchResult) (search.Results[D], error
 
 	if res.Hits != nil {
 		out.Hits = make([]search.Hit[D], 0, len(*res.Hits))
+
 		for _, hit := range *res.Hits {
 			if hit.Document == nil {
 				continue
 			}
+
 			doc, err := s.decode(*hit.Document)
 			if err != nil {
 				return search.Results[D]{}, err
 			}
+
 			var score float64
 			if hit.TextMatch != nil {
 				score = float64(*hit.TextMatch)
 			}
+
 			out.Hits = append(out.Hits, search.Hit[D]{Score: score, Doc: doc})
 		}
 	}
 
 	if res.FacetCounts != nil {
 		out.Facets = map[string][]search.FacetValue{}
+
 		for _, facet := range *res.FacetCounts {
 			if facet.FieldName == nil || facet.Counts == nil {
 				continue
 			}
+
 			values := make([]search.FacetValue, 0, len(*facet.Counts))
+
 			for _, c := range *facet.Counts {
 				if c.Value == nil || c.Count == nil {
 					continue
 				}
+
 				values = append(values, search.FacetValue{Value: *c.Value, Count: int64(*c.Count)})
 			}
+
 			out.Facets[*facet.FieldName] = values
 		}
 	}
@@ -105,46 +118,47 @@ func (s *Searcher[D]) toResults(res *api.SearchResult) (search.Results[D], error
 	return out, nil
 }
 
-func (s *Searcher[D]) Suggest(ctx context.Context, prefix string, limit int) ([]string, error) {
+func (s *Searcher[D]) Suggest(ctx context.Context, q search.SuggestQuery) ([]string, error) {
 	fields, _ := QueryFieldsFor(s.collection)
-	perPage := limit
-	if perPage <= 0 || perPage > search.MaxPageSize {
-		perPage = 10
-	}
-	page := 1
 
 	params := &api.SearchCollectionParams{
-		Q:             &prefix,
+		Q:             &q.Prefix,
 		QueryBy:       &fields,
-		Page:          &page,
-		PerPage:       &perPage,
+		Offset:        ptr(0),
+		Limit:         &q.Limit,
 		IncludeFields: ptr(suggestFieldFor(s.collection)),
 	}
 
 	res, err := s.client.Collection(string(s.collection)).Documents().Search(ctx, params)
 	if err != nil {
-		return nil, fail("typesense.Suggest", err, "suggesting in %s", s.collection)
+		return nil, failQuery("typesense.Suggest", err, "suggesting in %s", s.collection)
 	}
+
 	if res.Hits == nil {
-		return nil, nil
+		return []string{}, nil
 	}
 
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(*res.Hits))
+
 	for _, hit := range *res.Hits {
 		if hit.Document == nil {
 			continue
 		}
+
 		value := text(*hit.Document, suggestFieldFor(s.collection))
 		if value == "" {
 			continue
 		}
+
 		if _, already := seen[value]; already {
 			continue
 		}
+
 		seen[value] = struct{}{}
 		out = append(out, value)
 	}
+
 	return out, nil
 }
 

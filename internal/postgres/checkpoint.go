@@ -27,6 +27,7 @@ func (c *Checkpoint) Load(ctx context.Context, col search.Collection) (search.Pr
 	if errors.Is(err, pgx.ErrNoRows) {
 		return search.Progress{}, nil
 	}
+
 	if err != nil {
 		return search.Progress{}, search.Errf(
 			search.KindDependencyUnavailable,
@@ -84,5 +85,6 @@ func (c *Checkpoint) Save(ctx context.Context, col search.Collection, cur search
 			col,
 		)
 	}
+
 	return nil
 }

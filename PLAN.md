@@ -388,7 +388,7 @@ import (
 
 type Searcher[D any] interface {
 	Search(ctx context.Context, q Query) (Results[D], error)
-	Suggest(ctx context.Context, prefix string, limit int) ([]string, error)
+	Suggest(ctx context.Context, q SuggestQuery) ([]string, error)
 }
 
 // Index is generation-aware on purpose: a reindex builds a new generation and promotes it only
@@ -562,17 +562,19 @@ func (s *Searcher[D]) Search(ctx context.Context, q search.Query) (search.Result
 		QueryBy: ptr(queryFieldsFor(s.collection)),
 		FilterBy: ptr(filterFor(q)),   // includes OnBehalfOf for Orders
 		SortBy:   ptr(sortFor(q.Ranking)),
-		Page:     ptr(q.Page.Offset/max(q.Page.Limit, 1) + 1),
-		PerPage:  ptr(q.Page.Limit),
+		// The offset as an offset. Until 2026-10-21 this was page = offset/limit + 1 with
+		// per_page = limit, which rounded every offset down to a multiple of the limit:
+		// offset=50&limit=24 answered from the 49th hit. NewQuery has already validated both.
+		Offset:   ptr(q.Page.Offset),
+		Limit:    ptr(q.Page.Limit),
 	}
 
 	res, err := s.client.Collection(string(s.collection)).Documents().Search(ctx, params)
 	if err != nil {
-		// Every failure out of the engine is KindIndexUnavailable, never an empty Results. The
-		// engine not answering is not the same as nothing matching, and the two must not arrive
-		// at the caller looking identical.
-		return search.Results[D]{}, search.Errf(search.KindIndexUnavailable, "typesense.Search",
-			err, "searching %s", s.collection)
+		// A failure out of the engine is KindIndexUnavailable, never an empty Results: the
+		// engine not answering is not the same as nothing matching. A refusal of the request
+		// (400 or 422) is the caller's: KindMalformedQuery (failQuery, since 2026-10-21).
+		return search.Results[D]{}, failQuery("typesense.Search", err, "searching %s", s.collection)
 	}
 	return s.decode(res)
 }

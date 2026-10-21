@@ -36,6 +36,7 @@ func TestEveryMissingVariableIsNamedAtOnce(t *testing.T) {
 	_, err := config.FromEnvironment()
 
 	require.Error(t, err)
+
 	for _, name := range []string{
 		"SEARCH_DATABASE_URL",
 		"SEARCH_TYPESENSE_URL",
@@ -45,12 +46,7 @@ func TestEveryMissingVariableIsNamedAtOnce(t *testing.T) {
 		"SEARCH_ORDER_ENDPOINT",
 		"KINETIX_PKI_DIR",
 	} {
-		require.Containsf(
-			t,
-			err.Error(),
-			name,
-			"a misconfigured deploy should be one restart to fix, not five",
-		)
+		require.Containsf(t, err.Error(), name, "a misconfigured deploy should be one restart to fix, not five")
 	}
 }
 

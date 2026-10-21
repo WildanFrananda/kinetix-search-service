@@ -15,10 +15,13 @@ var noon = time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
 
 func throughJSON(t *testing.T, m map[string]any) map[string]any {
 	t.Helper()
+
 	raw, err := json.Marshal(m)
 	require.NoError(t, err)
+
 	var back map[string]any
 	require.NoError(t, json.Unmarshal(raw, &back))
+
 	return back
 }
 

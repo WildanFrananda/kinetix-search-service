@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -17,10 +18,7 @@ type Server struct {
 	ready    func(context.Context) error
 }
 
-func NewRouter(
-	products *querying.Finder[search.ProductDoc],
-	ready func(context.Context) error,
-) http.Handler {
+func NewRouter(products *querying.Finder[search.ProductDoc], ready func(context.Context) error) http.Handler {
 	s := &Server{products: products, ready: ready}
 
 	r := chi.NewRouter()
@@ -28,15 +26,28 @@ func NewRouter(
 	r.Get("/api/v1/products/suggest", s.suggestProducts)
 	r.Get("/health/live", s.live)
 	r.Get("/health/ready", s.readiness)
+
 	return r
 }
 
 func (s *Server) searchProducts(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 
+	offset, err := count(params, "offset")
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+
+	limit, err := count(params, "limit")
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+
 	q, err := search.NewQuery(
 		params.Get("q"),
-		search.WithPage(intParam(params.Get("offset")), intParam(params.Get("limit"))),
+		search.WithPage(offset, limit),
 		search.WithRanking(search.RankingProfile(params.Get("sort"))),
 		search.WithCategories(params["category"]...),
 	)
@@ -55,17 +66,26 @@ func (s *Server) searchProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) suggestProducts(w http.ResponseWriter, r *http.Request) {
-	prefix := r.URL.Query().Get("q")
-	if prefix == "" {
-		writeJSON(w, http.StatusOK, suggestResponse{Suggestions: []string{}})
-		return
-	}
+	params := r.URL.Query()
 
-	suggestions, err := s.products.Suggest(r.Context(), prefix, intParam(r.URL.Query().Get("limit")))
+	limit, err := count(params, "limit")
 	if err != nil {
 		writeFailure(w, err)
 		return
 	}
+
+	q, err := search.NewSuggestQuery(params.Get("q"), limit)
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+
+	suggestions, err := s.products.Suggest(r.Context(), q)
+	if err != nil {
+		writeFailure(w, err)
+		return
+	}
+
 	if suggestions == nil {
 		suggestions = []string{}
 	}
@@ -82,21 +102,23 @@ func (s *Server) readiness(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := s.ready(ctx); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, errorResponse{
-			Error: search.KindOf(err).String(),
-		})
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: search.KindOf(err).String()})
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
-func intParam(raw string) int {
+func count(params url.Values, name string) (int, error) {
+	raw := params.Get(name)
 	if raw == "" {
-		return 0
+		return 0, nil
 	}
+
 	value, err := strconv.Atoi(raw)
-	if err != nil || value < 0 {
-		return 0
+	if err != nil {
+		return 0, search.Errf(search.KindMalformedQuery, "httpapi.count", nil, "%s %q is not a whole number", name, raw)
 	}
-	return value
+
+	return value, nil
 }

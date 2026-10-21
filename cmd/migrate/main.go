@@ -28,19 +28,13 @@ func run(log *slog.Logger) error {
 	url := os.Getenv("SEARCH_DATABASE_URL")
 
 	if url == "" {
-		return search.Errf(
-			search.KindDependencyUnavailable,
-			"migrate.config",
-			nil,
-			"SEARCH_DATABASE_URL must be set",
-		)
+		return search.Errf(search.KindDependencyUnavailable, "migrate.config", nil, "SEARCH_DATABASE_URL must be set")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	db, err := sql.Open("pgx", url)
-
 	if err != nil {
 		return search.Errf(search.KindDependencyUnavailable, "migrate.open", err, "opening")
 	}
@@ -55,7 +49,6 @@ func run(log *slog.Logger) error {
 	}
 
 	before, err := goose.GetDBVersionContext(ctx, db)
-
 	if err != nil {
 		return search.Errf(search.KindDependencyUnavailable, "migrate.version", err, "reading")
 	}
@@ -65,7 +58,6 @@ func run(log *slog.Logger) error {
 	}
 
 	after, err := goose.GetDBVersionContext(ctx, db)
-
 	if err != nil {
 		return search.Errf(search.KindDependencyUnavailable, "migrate.version", err, "reading")
 	}

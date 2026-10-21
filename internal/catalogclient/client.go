@@ -23,21 +23,13 @@ var _ search.Source[search.ProductDoc] = (*Client)(nil)
 
 func Dial(s mesh.Settings) (*Client, error) {
 	creds, err := mesh.MutualTLS("catalogclient.Dial", s)
-
 	if err != nil {
 		return nil, err
 	}
 
 	conn, err := grpc.NewClient(s.Endpoint, grpc.WithTransportCredentials(creds))
-
 	if err != nil {
-		return nil, search.Errf(
-			search.KindDependencyUnavailable,
-			"catalogclient.Dial",
-			err,
-			"dialing %s",
-			s.Endpoint,
-		)
+		return nil, search.Errf(search.KindDependencyUnavailable, "catalogclient.Dial", err, "dialing %s", s.Endpoint)
 	}
 
 	return &Client{
@@ -92,6 +84,7 @@ func (c *Client) Count(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fail("catalogclient.Count", err, "counting products")
 	}
+
 	return response.GetTotal(), nil
 }
 
@@ -100,5 +93,6 @@ func fail(op string, err error, format string, args ...any) error {
 	if status.Code(err) == codes.InvalidArgument {
 		kind = search.KindMalformedQuery
 	}
+
 	return search.Errf(kind, op, err, format, args...)
 }

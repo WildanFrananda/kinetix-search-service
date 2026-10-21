@@ -23,21 +23,13 @@ var _ search.Source[search.OrderDoc] = (*Client)(nil)
 
 func Dial(s mesh.Settings) (*Client, error) {
 	creds, err := mesh.MutualTLS("orderclient.Dial", s)
-
 	if err != nil {
 		return nil, err
 	}
 
 	conn, err := grpc.NewClient(s.Endpoint, grpc.WithTransportCredentials(creds))
-
 	if err != nil {
-		return nil, search.Errf(
-			search.KindDependencyUnavailable,
-			"orderclient.Dial",
-			err,
-			"dialing %s",
-			s.Endpoint,
-		)
+		return nil, search.Errf(search.KindDependencyUnavailable, "orderclient.Dial", err, "dialing %s", s.Endpoint)
 	}
 
 	return &Client{
@@ -63,14 +55,8 @@ func (c *Client) ChangedSince(
 		Cursor: ToProtoCursor(cur),
 		Limit:  int32(limit), //nolint:gosec // the use case caps limit far below int32
 	})
-
 	if err != nil {
-		return search.Changes[search.OrderDoc]{}, fail(
-			"orderclient.ChangedSince",
-			err,
-			"paging from %q",
-			cur.LastID,
-		)
+		return search.Changes[search.OrderDoc]{}, fail("orderclient.ChangedSince", err, "paging from %q", cur.LastID)
 	}
 
 	if !CarriesTransaction(response.GetNext()) {

@@ -62,25 +62,22 @@ func run(log *slog.Logger) error {
 func serve(ctx context.Context, log *slog.Logger, d searchd) error {
 	listener, err := net.Listen("tcp", d.Config.GRPCAddr)
 	if err != nil {
-		return search.Errf(
-			search.KindDependencyUnavailable,
-			"searchd.grpc",
-			err,
-			"binding %s",
-			d.Config.GRPCAddr,
-		)
+		return search.Errf(search.KindDependencyUnavailable, "searchd.grpc", err, "binding %s", d.Config.GRPCAddr)
 	}
 
 	log.Info("grpc registered", "service", searchv1.SearchService_ServiceDesc.ServiceName)
 
 	serving := make(chan error, 2)
+
 	go func() {
 		log.Info("searchd http listening", "addr", d.Config.HTTPAddr)
+
 		serving <- d.HTTP.ListenAndServe()
 	}()
 
 	go func() {
 		log.Info("searchd grpc listening", "addr", listener.Addr().String())
+
 		serving <- d.GRPC.Serve(listener)
 	}()
 
@@ -89,6 +86,7 @@ func serve(ctx context.Context, log *slog.Logger, d searchd) error {
 		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, grpc.ErrServerStopped) {
 			return nil
 		}
+
 		return search.Errf(search.KindDependencyUnavailable, "searchd.serve", err, "serving")
 	case <-ctx.Done():
 	}
@@ -98,5 +96,6 @@ func serve(ctx context.Context, log *slog.Logger, d searchd) error {
 
 	shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
+
 	return d.HTTP.Shutdown(shutdown)
 }

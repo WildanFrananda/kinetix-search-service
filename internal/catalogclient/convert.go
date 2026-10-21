@@ -18,6 +18,7 @@ func ToProtoCursor(cur search.Cursor) *catalogv1.Cursor {
 	if !cur.UpdatedThrough.IsZero() {
 		out.UpdatedThrough = timestamppb.New(cur.UpdatedThrough)
 	}
+
 	return out
 }
 
@@ -25,10 +26,12 @@ func FromProtoCursor(c *catalogv1.Cursor) search.Cursor {
 	if c == nil {
 		return search.Cursor{}
 	}
+
 	out := search.Cursor{TransactionID: c.GetTransactionId(), LastID: c.GetLastSku()}
 	if ts := c.GetUpdatedThrough(); ts != nil {
 		out.UpdatedThrough = ts.AsTime().UTC()
 	}
+
 	return out
 }
 
@@ -47,12 +50,11 @@ func ToChanges(response *catalogv1.ChangedSinceResponse) search.Changes[search.P
 	for _, p := range response.GetUpserted() {
 		doc, err := ToDoc(p)
 		if err != nil {
-			changes.Refused = append(
-				changes.Refused,
-				search.Refusal{ID: p.GetSku(), Reason: err},
-			)
+			changes.Refused = append(changes.Refused, search.Refusal{ID: p.GetSku(), Reason: err})
+
 			continue
 		}
+
 		changes.Upserted = append(changes.Upserted, doc)
 	}
 
@@ -96,5 +98,6 @@ func updatedAt(p *catalogv1.Product) time.Time {
 	if ts := p.GetUpdatedAt(); ts != nil {
 		return ts.AsTime().UTC()
 	}
+
 	return time.Time{}
 }

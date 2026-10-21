@@ -52,12 +52,14 @@ func stringList(m map[string]any, key string) []string {
 	if !ok {
 		return nil
 	}
+
 	out := make([]string, 0, len(raw))
 	for _, v := range raw {
 		if s, ok := v.(string); ok {
 			out = append(out, s)
 		}
 	}
+
 	return out
 }
 
@@ -120,6 +122,7 @@ func DecodeMerchant(m map[string]any) (search.MerchantDoc, error) {
 			"indexed merchant has an unusable id",
 		)
 	}
+
 	return search.MerchantDoc{
 		ID:          id,
 		DisplayName: text(m, "display_name"),
@@ -153,6 +156,7 @@ func DecodeOrder(m map[string]any) (search.OrderDoc, error) {
 			"indexed order has an unusable id",
 		)
 	}
+
 	buyer, _ := search.NewBuyerID(text(m, "buyer"))
 	merchant, _ := search.NewMerchantID(text(m, "merchant_id"))
 

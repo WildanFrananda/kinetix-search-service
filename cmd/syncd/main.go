@@ -79,14 +79,7 @@ func loop(ctx context.Context, log *slog.Logger, d syncd) error {
 		{search.Orders, d.Placed.Once},
 	}
 
-	log.InfoContext(
-		ctx,
-		"syncd started",
-		"collections",
-		len(runs),
-		"interval",
-		d.Config.SyncInterval.String(),
-	)
+	log.InfoContext(ctx, "syncd started", "collections", len(runs), "interval", d.Config.SyncInterval.String())
 
 	ticker := time.NewTicker(d.Config.SyncInterval)
 	defer ticker.Stop()
@@ -107,7 +100,6 @@ func loop(ctx context.Context, log *slog.Logger, d syncd) error {
 
 func runOnce(ctx context.Context, r collectionSync, log *slog.Logger) {
 	err := r.once(ctx)
-
 	if err == nil {
 		return
 	}

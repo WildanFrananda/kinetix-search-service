@@ -25,9 +25,9 @@ type facetValue struct {
 }
 
 type indexInfo struct {
-	IndexedThroughMS int64 `json:"indexed_through_ms"`
-	AgeSeconds       int64 `json:"age_seconds"`
-	Stale            bool  `json:"stale"`
+	IndexedThroughMS *int64 `json:"indexed_through_ms"`
+	AgeSeconds       *int64 `json:"age_seconds"`
+	Stale            bool   `json:"stale"`
 }
 
 type searchResponse struct {
@@ -47,6 +47,7 @@ type errorResponse struct {
 
 func toSearchResponse(results search.Results[search.ProductDoc]) searchResponse {
 	hits := make([]productHit, 0, len(results.Hits))
+
 	for _, h := range results.Hits {
 		hits = append(hits, productHit{
 			ID:          h.Doc.ID.String(),
@@ -62,13 +63,17 @@ func toSearchResponse(results search.Results[search.ProductDoc]) searchResponse 
 	}
 
 	var facets map[string][]facetValue
+
 	if len(results.Facets) > 0 {
 		facets = make(map[string][]facetValue, len(results.Facets))
+
 		for name, values := range results.Facets {
 			out := make([]facetValue, 0, len(values))
+
 			for _, v := range values {
 				out = append(out, facetValue{Value: v.Value, Count: v.Count})
 			}
+
 			facets[name] = out
 		}
 	}
@@ -77,17 +82,30 @@ func toSearchResponse(results search.Results[search.ProductDoc]) searchResponse 
 		Total:  results.Total,
 		Hits:   hits,
 		Facets: facets,
-		Index: indexInfo{
-			IndexedThroughMS: results.Freshness.IndexedThrough.UnixMilli(),
-			AgeSeconds:       int64(results.Freshness.Age.Seconds()),
-			Stale:            results.Freshness.Stale,
-		},
+		Index:  toIndexInfo(results.Freshness),
 	}
+}
+
+func toIndexInfo(f search.Freshness) indexInfo {
+	info := indexInfo{Stale: f.Stale}
+
+	if f.Synced {
+		age := int64(f.Age.Seconds())
+		info.AgeSeconds = &age
+	}
+
+	if !f.IndexedThrough.IsZero() {
+		through := f.IndexedThrough.UnixMilli()
+		info.IndexedThroughMS = &through
+	}
+
+	return info
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
+
 	_ = json.NewEncoder(w).Encode(body)
 }
 

@@ -63,10 +63,7 @@ func TestAProductWithAnUnusableSkuIsCorruptNotSkipped(t *testing.T) {
 }
 
 func TestAMissingMerchantDoesNotSinkTheProduct(t *testing.T) {
-	doc, err := catalogclient.ToDoc(&catalogv1.Product{
-		Sku:   "SHOE-1",
-		Price: &commonv1.Money{Currency: "IDR"},
-	})
+	doc, err := catalogclient.ToDoc(&catalogv1.Product{Sku: "SHOE-1", Price: &commonv1.Money{Currency: "IDR"}})
 
 	require.NoError(t, err)
 	require.True(t, doc.MerchantID.IsZero())

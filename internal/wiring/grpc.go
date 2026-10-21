@@ -34,10 +34,7 @@ func provideGRPC(p grpcParams) (*grpc.Server, error) {
 
 	checker := health.NewServer()
 	healthpb.RegisterHealthServer(server, checker)
-	checker.SetServingStatus(
-		searchv1.SearchService_ServiceDesc.ServiceName,
-		healthpb.HealthCheckResponse_SERVING,
-	)
+	checker.SetServingStatus(searchv1.SearchService_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_SERVING)
 
 	reflection.Register(server)
 

@@ -7,7 +7,7 @@ import (
 
 type Searcher[D any] interface {
 	Search(ctx context.Context, q Query) (Results[D], error)
-	Suggest(ctx context.Context, prefix string, limit int) ([]string, error)
+	Suggest(ctx context.Context, q SuggestQuery) ([]string, error)
 }
 
 type Index[D any] interface {

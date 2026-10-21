@@ -14,8 +14,22 @@ import (
 
 var noon = time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
 
-func productFinder(s *searchtest.FakeSearcher[search.ProductDoc], c *searchtest.FakeCheckpoint, stale time.Duration) *querying.Finder[search.ProductDoc] {
+func productFinder(
+	s *searchtest.FakeSearcher[search.ProductDoc],
+	c *searchtest.FakeCheckpoint,
+	stale time.Duration,
+) *querying.Finder[search.ProductDoc] {
 	return querying.NewFinder(search.Products, s, c, searchtest.FixedClock{At: noon}, stale)
+}
+
+func orderFinder(s *searchtest.FakeSearcher[search.OrderDoc]) *querying.Finder[search.OrderDoc] {
+	return querying.NewFinder(
+		search.Orders,
+		s,
+		&searchtest.FakeCheckpoint{},
+		searchtest.FixedClock{At: noon},
+		time.Minute,
+	)
 }
 
 func TestFindReportsFreshness(t *testing.T) {
@@ -25,13 +39,15 @@ func TestFindReportsFreshness(t *testing.T) {
 		},
 		SavedAt: map[search.Collection]time.Time{search.Products: noon.Add(-2 * time.Minute)},
 	}
-	f := productFinder(&searchtest.FakeSearcher[search.ProductDoc]{Results: search.Results[search.ProductDoc]{Total: 3}}, cp, 10*time.Minute)
+	searcher := &searchtest.FakeSearcher[search.ProductDoc]{Results: search.Results[search.ProductDoc]{Total: 3}}
+	f := productFinder(searcher, cp, 10*time.Minute)
 
 	q, err := search.NewQuery("sepatu")
 	require.NoError(t, err)
 
 	res, err := f.Find(context.Background(), q)
 	require.NoError(t, err)
+	require.True(t, res.Freshness.Synced)
 	require.Equal(t, 2*time.Minute, res.Freshness.Age)
 	require.False(t, res.Freshness.Stale)
 }
@@ -67,7 +83,7 @@ func TestFindFailsRatherThanReturningNothing(t *testing.T) {
 
 func TestOrdersCannotBeSearchedWithoutAPrincipal(t *testing.T) {
 	s := &searchtest.FakeSearcher[search.OrderDoc]{}
-	f := querying.NewFinder(search.Orders, s, &searchtest.FakeCheckpoint{}, searchtest.FixedClock{At: noon}, time.Minute)
+	f := orderFinder(s)
 
 	q, _ := search.NewQuery("KNX-2026")
 	_, err := f.Find(context.Background(), q)
@@ -79,7 +95,7 @@ func TestOrdersCannotBeSearchedWithoutAPrincipal(t *testing.T) {
 
 func TestOrdersSearchScopedToThePrincipal(t *testing.T) {
 	s := &searchtest.FakeSearcher[search.OrderDoc]{}
-	f := querying.NewFinder(search.Orders, s, &searchtest.FakeCheckpoint{}, searchtest.FixedClock{At: noon}, time.Minute)
+	f := orderFinder(s)
 
 	buyer, err := search.NewMerchantID("principal-9")
 	require.NoError(t, err)
@@ -118,11 +134,7 @@ func TestAnIndexNobodyHasChangedIsNotStale(t *testing.T) {
 	results, err := f.Find(context.Background(), q)
 
 	require.NoError(t, err)
-	require.False(
-		t,
-		results.Freshness.Stale,
-		"a catalogue nobody edits is not an index nobody syncs",
-	)
+	require.False(t, results.Freshness.Stale, "a catalogue nobody edits is not an index nobody syncs")
 	require.Equal(t, 20*time.Second, results.Freshness.Age)
 	require.Equal(
 		t,
@@ -148,4 +160,55 @@ func TestAnIndexNobodyHasSyncedIsStale(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, results.Freshness.Stale)
+}
+
+func TestACollectionNeverSyncedSaysSoRatherThanAgeingFromYearOne(t *testing.T) {
+	f := productFinder(&searchtest.FakeSearcher[search.ProductDoc]{}, &searchtest.FakeCheckpoint{}, 10*time.Minute)
+
+	q, err := search.NewQuery("sepatu")
+	require.NoError(t, err)
+
+	results, err := f.Find(context.Background(), q)
+
+	require.NoError(t, err)
+	require.Equal(t, search.Freshness{Synced: false, Stale: true}, results.Freshness)
+}
+
+func TestSuggestWithNothingTypedAsksNothing(t *testing.T) {
+	s := &searchtest.FakeSearcher[search.ProductDoc]{}
+	f := productFinder(s, &searchtest.FakeCheckpoint{}, time.Minute)
+
+	q, err := search.NewSuggestQuery("   ", 5)
+	require.NoError(t, err)
+
+	suggestions, err := f.Suggest(context.Background(), q)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{}, suggestions)
+	require.Empty(t, s.Suggested)
+}
+
+func TestSuggestPassesTheQueryThrough(t *testing.T) {
+	s := &searchtest.FakeSearcher[search.ProductDoc]{}
+	f := productFinder(s, &searchtest.FakeCheckpoint{}, time.Minute)
+
+	q, err := search.NewSuggestQuery("sep", 500)
+	require.NoError(t, err)
+
+	_, err = f.Suggest(context.Background(), q)
+
+	require.NoError(t, err)
+	require.Equal(t, []search.SuggestQuery{{Prefix: "sep", Limit: search.MaxPageSize}}, s.Suggested)
+}
+
+func TestOrdersAreNeverSuggested(t *testing.T) {
+	s := &searchtest.FakeSearcher[search.OrderDoc]{}
+
+	q, err := search.NewSuggestQuery("KNX", 5)
+	require.NoError(t, err)
+
+	_, err = orderFinder(s).Suggest(context.Background(), q)
+
+	require.Equal(t, search.KindMalformedQuery, search.KindOf(err))
+	require.Empty(t, s.Suggested)
 }

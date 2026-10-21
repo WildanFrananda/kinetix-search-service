@@ -94,6 +94,7 @@ const maxIDLength = 64
 
 func newID[T identifier[T]](raw, op string) (T, error) {
 	var zero T
+
 	trimmed := strings.TrimSpace(raw)
 	switch {
 	case trimmed == "":
@@ -103,5 +104,6 @@ func newID[T identifier[T]](raw, op string) (T, error) {
 	case strings.ContainsFunc(trimmed, isControl):
 		return zero, Errf(KindMalformedQuery, op, nil, "control byte in identifier")
 	}
+
 	return zero.set(trimmed), nil
 }
