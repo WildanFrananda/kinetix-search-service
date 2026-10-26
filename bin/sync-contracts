@@ -8,8 +8,8 @@
 # Pinned to a commit as well as a tag. A tag can be moved, and a moved tag would silently change
 # what this service speaks; the tag is what a reader looks up, the commit is what is verified.
 #
-# `contracts/` and the generated output are both gitignored, so `git ls-files '*.proto'` stays
-# empty in this repository as it does in every other service.
+# `contracts/` is gitignored, so `git ls-files '*.proto'` stays empty in this repository as it does
+# in every other service. The generated Go is committed and checked against a fresh run in CI.
 set -eu
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"

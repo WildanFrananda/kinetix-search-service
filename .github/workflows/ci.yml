@@ -36,13 +36,24 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      # protoc pinned by release and checksum, not apt's: its version is written into every generated
+      # file, and the committed stubs must equal this run's byte for byte. Notary pins the same one.
       - name: Generate the contracts
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev
+          curl -fsSL -o /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-linux-x86_64.zip
+          echo "121f6c7afe1d4d0e3ea6aab9432038599250134cbf4474cb1167d2c7decd4278  /tmp/protoc.zip" | sha256sum -c -
+          sudo unzip -q -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*'
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
           ./bin/sync-contracts
+      - name: The committed stubs are what the contract generates
+        run: |
+          drift="$(git status --porcelain -- internal/contractgen)"
+          if [ -n "$drift" ]; then
+            echo "internal/contractgen differs from what is committed; run bin/sync-contracts and commit the result:"
+            echo "$drift"
+            exit 1
+          fi
       - run: ./bin/check-core-purity
       - run: ./bin/check-boundaries
 
