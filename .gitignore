@@ -11,9 +11,10 @@
 # every other service.
 /contracts/
 
-# Generated gRPC stubs, written by bin/sync-contracts from the vendored proto. Never committed:
-# generated code in the tree is generated code that drifts from the contract it came from.
-/internal/contractgen/
+# The generated gRPC stubs in internal/contractgen are committed since 2026-10-26, at the user's choice:
+# Dependabot runs `go mod tidy` on a bare clone and cannot run bin/sync-contracts, so with them
+# ignored every Go update failed. CI's purity job regenerates them with a pinned protoc and fails
+# when they differ from what is committed, so they cannot drift from the contract.
 
 coverage.out
 coverage.html

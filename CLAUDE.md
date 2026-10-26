@@ -115,6 +115,11 @@ is no `ports/` and no `adapters/` — in Go the call site reads `typesense.NewIn
 - **`bin/check-boundaries`** fails when anything outside `cmd/` and `internal/wiring` imports dig.
   Controlled both ways: a dig import in `internal/system` fails it.
 - **`bin/test`** runs the suite with the coverage flags the `tests/` layout requires.
+- **The generated stubs are committed, and CI proves them current.** `internal/contractgen` is in git since
+  2026-10-26, at the user's choice, because Dependabot runs `go mod tidy` on a bare clone and cannot run
+  `bin/sync-contracts`. The purity job regenerates it with protoc 36.2 pinned by release and checksum (apt's
+  version is written into every file and changes with the runner) and fails when the tree differs. The
+  `.proto` files stay out: `contracts/` is ignored.
 
 ## Conventions
 
