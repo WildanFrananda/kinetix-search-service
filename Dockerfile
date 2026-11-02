@@ -1,4 +1,4 @@
-FROM golang:1.27-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
+FROM golang:1.27-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS build
 
 # The wire contracts live in kinetix-contracts, not here: bin/sync-contracts fetches them at a
 # pinned commit and generates the Go stubs. libprotobuf-dev is not decoration: Debian's protoc is
@@ -40,7 +40,7 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/searchd ./cmd/searchd \
     && go build -trimpath -ldflags="-s -w" -o /out/reindex ./cmd/reindex \
     && go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
 
-FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS final
+FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS final
 
 # curl is here for the compose healthcheck, which probes /health/ready over HTTP. ca-certificates
 # is here because every outbound call this service makes is TLS.
