@@ -40,7 +40,7 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/searchd ./cmd/searchd \
     && go build -trimpath -ldflags="-s -w" -o /out/reindex ./cmd/reindex \
     && go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
 
-FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS final
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS final
 
 # curl is here for the compose healthcheck, which probes /health/ready over HTTP. ca-certificates
 # is here because every outbound call this service makes is TLS.
